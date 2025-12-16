@@ -1,6 +1,6 @@
 ## 📂 Data Provenance & Training Source
 
-The core training logic and feature extraction pipelines are encapsulated within the **`Xception-training/`** directory.
+The core training logic and feature extraction pipelines are encapsulated within the **`Xception-Training/`** directory.
 
 The Jupyter notebook located in this folder relies on the **Fashion550k dataset** as the authoritative ground truth for model optimization and style attribute learning.
 
@@ -18,3 +18,4 @@ If you use these training scripts or the underlying data logic, please acknowled
   booktitle = "Proceedings of the International Conference on Computer Vision Workshops (ICCVW)",
   year      = 2017,
 }
+
