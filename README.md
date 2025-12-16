@@ -1,7 +1,17 @@
-Data Provenance and Training Directory
-The training procedures and feature extraction protocols are encapsulated within the Xception-training/ directory. The Python notebook located in this folder utilizes the Fashion550k dataset as the primary ground truth for model optimization.
+## 📂 Data Provenance & Training Source
 
-This dataset was originally introduced and benchmarked for style analysis in the following publication presented at the International Conference on Computer Vision Workshops (ICCVW). Please refer to this source for details regarding the dataset's collection methodology and annotation schema:
+The core training logic and feature extraction pipelines are encapsulated within the **`Xception-training/`** directory.
+
+The Jupyter notebook located in this folder relies on the **Fashion550k dataset** as the authoritative ground truth for model optimization and style attribute learning.
+
+> **Note:** The dataset utilized in these scripts is sourced from the academic research presented at the **ICCV Workshops**.
+
+If you use these training scripts or the underlying data logic, please acknowledge the original source:
+
+<details>
+<summary>📚 <strong>Click to view BibTeX Citation</strong></summary>
+
+```bibtex
 @InProceedings{TakagiICCVW2017,
   author    = {Moeko Takagi and Edgar Simo-Serra and Satoshi Iizuka and Hiroshi Ishikawa},
   title     = {{What Makes a Style: Experimental Analysis of Fashion Prediction}},
