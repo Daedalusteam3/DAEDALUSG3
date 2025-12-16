@@ -1,0 +1,301 @@
+{% extends "daedalus/base.html" %}
+{% load static %}
+
+{% block extra_head %}
+<style>
+  :root {
+    --daedalus-blue-dark: #004b78;
+    --daedalus-blue-light: #1da7e2;
+  }
+
+  body {
+    background: #f5f7fb;
+  }
+
+  .home-wrapper {
+    /* Escalado de tamaño: max-width original 1080px -> 1400px (aprox. +30%) */
+    max-width: 1400px;
+    margin: 0 auto;
+    /* Padding original 32px 24px 80px -> 42px 30px 104px */
+    padding: 42px 30px 104px;
+  }
+
+  /* HERO */
+  .home-hero {
+    display: flex;
+    flex-wrap: wrap;
+    /* gap original 24px -> 30px */
+    gap: 30px;
+    /* padding original 24px -> 30px */
+    padding: 30px;
+    /* border-radius original 16px -> 20px */
+    border-radius: 20px;
+    background: radial-gradient(circle at top left,
+                rgba(29,167,226,0.25),
+                rgba(0,75,120,0.9));
+    color: #f9fbff;
+    /* box-shadow ajustado */
+    box-shadow: 0 12px 35px rgba(0,0,0,0.2);
+  }
+
+  .home-hero-logo {
+    /* flex original 180px -> 234px */
+    flex: 0 0 234px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .home-hero-logo img {
+    /* max-width original 160px -> 208px */
+    max-width: 208px;
+    height: auto;
+    filter: drop-shadow(0 5px 10px rgba(0,0,0,0.4));
+  }
+
+  .home-hero-text {
+    /* flex original 260px -> 338px */
+    flex: 1 1 338px;
+  }
+
+  .home-hero-title {
+    /* font-size original 26px -> 34px */
+    margin: 0 0 10px;
+    font-size: 34px;
+    font-weight: 700;
+  }
+
+  .home-hero-subtitle {
+    /* margin original 16px -> 20px */
+    /* font-size original 14px -> 18px */
+    margin: 0 0 20px;
+    font-size: 18px;
+    /* max-width original 620px -> 806px */
+    max-width: 806px;
+  }
+
+  .home-pill {
+    display: inline-flex;
+    align-items: center;
+    /* gap original 6px -> 8px */
+    gap: 8px;
+    /* padding original 4px 10px -> 5px 13px */
+    padding: 5px 13px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.25);
+    /* font-size original 11px -> 14px */
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .home-pill-dot {
+    /* size original 8px -> 10px */
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: #4ade80;
+  }
+
+  .home-hero-links {
+    /* margin-top original 16px -> 20px */
+    margin-top: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    /* gap original 10px -> 13px */
+    gap: 13px;
+  }
+
+  .home-btn {
+    /* padding original 8px 14px -> 10px 18px */
+    padding: 10px 18px;
+    border-radius: 999px;
+    /* font-size original 13px -> 17px */
+    font-size: 17px;
+    cursor: pointer;
+    transition: .15s;
+    text-decoration: none;
+  }
+
+  .home-btn-primary {
+    background: #ffffff;
+    color: var(--daedalus-blue-dark);
+    box-shadow: 0 5px 12px rgba(0,0,0,0.28);
+  }
+
+  .home-btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.32);
+  }
+
+  .home-btn-ghost {
+    background: transparent;
+    color: #e5f4ff;
+    border: 1px solid rgba(255,255,255,0.6);
+  }
+
+  .home-btn-ghost:hover {
+    background: rgba(255,255,255,0.12);
+  }
+
+  /* CARDS */
+  .home-sections {
+    /* margin-top original 28px -> 36px */
+    margin-top: 36px;
+    display: grid;
+    /* Grid mantenida, pero minmax base ajustado */
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr);
+    /* gap original 20px -> 26px */
+    gap: 26px;
+  }
+
+  .home-card {
+    background: #ffffff;
+    /* border-radius original 14px -> 18px */
+    border-radius: 18px;
+    /* padding original 18px 18px 16px -> 23px 23px 20px */
+    padding: 23px 23px 20px;
+    box-shadow: 0 5px 20px rgba(15,23,42,0.1);
+    border: 1px solid #e5e7eb;
+  }
+
+  .home-card h2 {
+    /* margin original 8px -> 10px */
+    margin: 0 0 10px;
+    /* font-size original 18px -> 23px */
+    font-size: 23px;
+    color: var(--daedalus-blue-dark);
+  }
+
+  .home-card h3 {
+    /* font-size original 18px -> 23px */
+    font-size: 19px;
+    margin-top: 15px; /* Added margin for sub-header */
+    margin-bottom: 8px;
+    color: var(--daedalus-blue-dark);
+  }
+
+  .home-card p, .home-card li {
+    /* font-size original 13px -> 17px */
+    font-size: 17px;
+    color: #374151;
+    line-height: 1.6;
+  }
+
+  .home-contact-list {
+    /* padding-left original 16px -> 20px */
+    padding-left: 20px;
+    /* font-size original 13px -> 17px */
+    font-size: 17px;
+  }
+
+  .home-contact-list li {
+    margin-bottom: 5px;
+  }
+
+  .home-contact-list a {
+    color: var(--daedalus-blue-dark);
+  }
+
+  /* FOOTER */
+  .home-credits {
+    position: fixed;
+    left: 15px; /* Adjusted */
+    bottom: 10px; /* Adjusted */
+    /* font-size original 10px -> 13px */
+    font-size: 13px;
+    color: #6b7280;
+    opacity: 0.9;
+  }
+
+  @media (max-width: 768px) {
+    .home-sections {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="home-wrapper">
+
+  <section class="home-hero">
+    <div class="home-hero-logo">
+      <img src="{% static 'daedalus/img/daedalus_logo.png' %}">
+    </div>
+
+    <div class="home-hero-text">
+      <div class="home-pill">
+        <span class="home-pill-dot"></span>
+        Simulation and smart advertising platform
+      </div>
+
+      <h1 class="home-hero-title">Welcome to Daedalus</h1>
+
+      <p class="home-hero-subtitle">
+        Daedalus combines demand simulation, frequency optimization and an
+        intelligent ad selection system based on computer vision and audience segmentation.
+      </p>
+
+      <div class="home-hero-links">
+        <a href="{% url 'daedalus-dashboard' %}" class="home-btn home-btn-primary">
+          Frequency settings
+        </a>
+
+        <a href="{% url 'daedalus-dynamic' %}" class="home-btn home-btn-ghost">
+          Dynamic bus map
+        </a>
+
+        <a href="{% url 'daedalus-ads-map' %}" class="home-btn home-btn-ghost">
+          Ads map
+        </a>
+
+        <a href="{% url 'daedalus-ads-admin' %}" class="home-btn home-btn-primary" style="background:#dbeafe;color:#004b78;">
+          Ads management
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="home-sections">
+
+    <article class="home-card">
+      <h2>What does Daedalus do?</h2>
+      <p>
+        Daedalus combines demand simulation, optimization models (PuLP),
+        GTFS data and computer vision to offer a complete tool for public
+        transport analysis and management.
+      </p>
+
+      <h3>Capabilities</h3>
+      <ul>
+        <li>Discrete-time demand simulation.</li>
+        <li>Automatic frequency adjustment by district.</li>
+        <li>Intelligent ad selection system based on detected audience.</li>
+        <li>Real-time updates via Kafka.</li>
+        <li>Structured storage in Supabase.</li>
+      </ul>
+    </article>
+
+    <aside class="home-card">
+      <h2>Integrated platform</h2>
+      <p>
+        The advertising module detects people at each stop through a camera,
+        classifies age, gender and expected product, and selects the most suitable
+        ad in real time.
+      </p>
+
+      <h3>Contact</h3>
+      <ul class="home-contact-list">
+        <li><strong>Email:</strong> <a href="mailto:daedalusg3.team@gmail.com">daedalusg3.team@gmail.com</a></li>
+        <li><strong>Location:</strong> UPM-Madrid</li>
+      </ul>
+    </aside>
+
+  </section>
+</div>
+
+<div class="home-credits">
+  Web development using Django, Bootstrap, jQuery
+</div>
+{% endblock %}

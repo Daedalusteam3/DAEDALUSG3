@@ -1,0 +1,163 @@
+{% extends "daedalus/base.html" %}
+
+{% block content %}
+<div style="padding:18px; max-width:1400px; margin:0 auto; font-size:1em;">
+  <h2 style="margin:0 0 10px 0; font-size:1.3em;">Transport Results</h2>
+
+  <div style="color:#555; margin-bottom:18px;">
+
+    {% if origin_place and dest_place %}
+      <div style="font-size:1.0em;">
+        <b>{{ origin_place }}</b>
+        <span style="color:#9ca3af;">(zone {{ origin_zone }})</span>
+        →
+        <b>{{ dest_place }}</b>
+        <span style="color:#9ca3af;">(zone {{ dest_zone }})</span>
+      </div>
+    {% else %}
+      <div>
+        Origin zone: <b>{{ origin_zone }}</b> ({{ origin_stops_count }} stops) |
+        Destination zone: <b>{{ dest_zone }}</b> ({{ dest_stops_count }} stops)
+      </div>
+    {% endif %}
+
+  </div>
+
+  {% if route_error %}
+    <div style="background:#fef2f2; border:1px solid #fecaca; color:#991b1b; padding:14px; border-radius:10px;">
+      {{ route_error }}
+    </div>
+    <div style="margin-top:20px;">
+      <a href="{% url 'daedalus-transport-zones' %}" style="text-decoration:none;">
+        ← Back to zone selection
+      </a>
+    </div>
+  {% elif not route %}
+    <div style="background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; padding:14px; border-radius:10px;">
+      No route found between these zones with current data / incidences.
+    </div>
+    <div style="margin-top:20px;">
+      <a href="{% url 'daedalus-transport-zones' %}" style="text-decoration:none;">
+        ← Back to zone selection
+      </a>
+    </div>
+  {% else %}
+
+    <div style="display:flex; gap:14px; flex-wrap:wrap; margin:14px 0 20px 0;">
+      <div style="background:white; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; min-width:250px;">
+        <div style="font-size:0.75em; color:#6b7280;">Total travel time</div>
+        <div style="font-size:1.4em; font-weight:700;">{{ route.total_time_min }} min</div>
+        <div style="font-size:0.75em; color:#6b7280;">({{ route.total_time_s }} seconds)</div>
+      </div>
+
+      <div style="background:white; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; min-width:250px;">
+        <div style="font-size:0.75em; color:#6b7280;">Steps</div>
+        <div style="font-size:1.4em; font-weight:700;">{{ route.steps_count }}</div>
+        <div style="font-size:0.75em; color:#6b7280;">legs + transfers</div>
+      </div>
+
+      <div style="background:white; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; min-width:250px;">
+        <div style="font-size:0.75em; color:#6b7280;">Transfers</div>
+        <div style="font-size:1.4em; font-weight:700;">{{ route.transfers_count }}</div>
+        <div style="font-size:0.75em; color:#6b7280;">mode/line changes</div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:20px;">Route steps</h3>
+    <div style="font-size:0.85em; color:#666; margin-bottom:8px;">
+      Each row is either a travel leg or a transfer penalty at the same stop.
+    </div>
+
+    <div
+      style="
+        overflow:auto;
+        max-height:70vh;
+        background:white;
+        border:1px solid #e5e7eb;
+        border-radius:10px;
+      "
+    >
+      <table style="width:100%; border-collapse:collapse; font-size:0.95em;">
+        <thead>
+          <tr style="background:#111827; color:white;">
+            <th style="position:sticky; top:0; background:#111827; z-index:2; text-align:left; padding:9px; border-bottom:1px solid #374151;">Type</th>
+            <th style="position:sticky; top:0; background:#111827; z-index:2; text-align:left; padding:9px; border-bottom:1px solid #374151;">From stop</th>
+            <th style="position:sticky; top:0; background:#111827; z-index:2; text-align:left; padding:9px; border-bottom:1px solid #374151;">To stop</th>
+            <th style="position:sticky; top:0; background:#111827; z-index:2; text-align:left; padding:9px; border-bottom:1px solid #374151;">Mode</th>
+            <th style="position:sticky; top:0; background:#111827; z-index:2; text-align:left; padding:9px; border-bottom:1px solid #374151;">Line</th>
+            <th style="position:sticky; top:0; background:#111827; z-index:2; text-align:right; padding:9px; border-bottom:1px solid #374151;">Time (s)</th>
+            <th style="position:sticky; top:0; background:#111827; z-index:2; text-align:right; padding:9px; border-bottom:1px solid #374151;">Time (min)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in route.steps %}
+          <tr>
+            <td style="padding:9px; border-bottom:1px solid #f1f5f9;">
+              {% if s.is_transfer %}
+                <span style="display:inline-block; padding:2px 8px; border-radius:999px; background:#fee2e2; color:#991b1b; font-size:0.8em;">
+                  TRANSFER
+                </span>
+              {% else %}
+                <span style="display:inline-block; padding:2px 8px; border-radius:999px; background:#dcfce7; color:#166534; font-size:0.8em;">
+                  TRAVEL
+                </span>
+              {% endif %}
+            </td>
+
+            <td style="padding:9px; border-bottom:1px solid #f1f5f9;">
+              {% if s.from_stop_name %}
+                <div style="font-weight:600;">{{ s.from_stop_name }}</div>
+                <div style="font-size:0.8em; color:#6b7280;">{{ s.from_stop }}</div>
+              {% else %}
+                {{ s.from_stop }}
+              {% endif %}
+            </td>
+
+            <td style="padding:9px; border-bottom:1px solid #f1f5f9;">
+              {% if s.to_stop_name %}
+                <div style="font-weight:600;">{{ s.to_stop_name }}</div>
+                <div style="font-size:0.8em; color:#6b7280;">{{ s.to_stop }}</div>
+              {% else %}
+                {{ s.to_stop }}
+              {% endif %}
+            </td>
+
+            <td style="padding:9px; border-bottom:1px solid #f1f5f9;">
+              {% if s.is_transfer %}
+                {{ s.mode_from }} → {{ s.mode_to }}
+              {% else %}
+                {{ s.mode_from }}
+              {% endif %}
+            </td>
+
+            <td style="padding:9px; border-bottom:1px solid #f1f5f9;">
+              {% if s.is_transfer %}
+                {{ s.line_from }} → {{ s.line_to }}
+              {% else %}
+                {{ s.line_from }}
+              {% endif %}
+            </td>
+
+            <td style="padding:9px; border-bottom:1px solid #f1f5f9; text-align:right;">
+              {{ s.time_s }}
+            </td>
+            <td style="padding:9px; border-bottom:1px solid #f1f5f9; text-align:right;">
+              {{ s.time_min }}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" style="padding:14px;">No steps to display.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:20px;">
+      <a href="{% url 'daedalus-transport-zones' %}" style="text-decoration:none;">
+        ← Back to zone selection
+      </a>
+    </div>
+
+  {% endif %}
+</div>
+{% endblock %}

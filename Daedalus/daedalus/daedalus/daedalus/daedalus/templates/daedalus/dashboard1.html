@@ -1,0 +1,413 @@
+{% extends "daedalus/base.html" %}
+
+{% block title %}KPI dashboard · Daedalus{% endblock %}
+
+{% block content %}
+<div style="max-width: 1300px; margin: 25px auto 40px auto; padding: 0 20px; font-size: 1.15em;">
+  <h1 style="font-size: 1.8em; font-weight: 700; margin-bottom: 6px; color:#111827;">
+    KPI dashboard
+  </h1>
+  <p style="margin-bottom: 20px; color:#4b5563; font-size: 0.85em; border-bottom: 1px solid #EEE; padding-bottom: 10px;">
+    Select a <strong>run</strong> to see a summary of:
+    average waiting time, network utilization and frequency changes by lines and districts.
+    Indicators are computed from the final data stored in Supabase
+    (<code>run_line_freq</code>, <code>run_stop_stats</code>, <code>stops</code>).
+  </p>
+
+  <div style="display:flex; align-items:center; gap:16px; margin-bottom: 25px; padding:10px 15px; background:#F9FAFB; border-radius:8px;">
+    <label for="run-select" style="font-size:0.9em; color:#374151; font-weight:600;">Simulation Run:</label>
+    <select id="run-select"
+            style="min-width:300px; padding:8px 12px; font-size:0.9em; border-radius:8px; border:1px solid #2563EB; outline:none; cursor:pointer;">
+      <option value="">Loading runs…</option>
+    </select>
+    <span id="run-meta"
+          style="font-size:0.75em; color:#6b7280; margin-left:4px;">
+    </span>
+  </div>
+
+  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:25px;">
+
+    <div style="background:white; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08); padding:16px;">
+      <h2 style="font-size:1.0em; font-weight:700; margin-bottom:12px; color:#2563EB; border-bottom:1px solid #EEE; padding-bottom:4px;">
+        Lines summary: Boosted vs reduced
+      </h2>
+      <canvas id="chart-lines-summary" height="180"></canvas>
+      <div id="lines-summary-text" style="font-size:0.75em; color:#6b7280; margin-top:10px;"></div>
+    </div>
+
+    <div style="background:white; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08); padding:16px;">
+      <h2 style="font-size:1.0em; font-weight:700; margin-bottom:12px; color:#2563EB; border-bottom:1px solid #EEE; padding-bottom:4px;">
+        Top 10 lines by relative frequency change
+      </h2>
+      <canvas id="chart-lines-top" height="180"></canvas>
+    </div>
+
+    <div style="background:white; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08); padding:16px;">
+      <h2 style="font-size:1.0em; font-weight:700; margin-bottom:12px; color:#2563EB; border-bottom:1px solid #EEE; padding-bottom:4px;">
+        Average waiting time by district (min)
+      </h2>
+      <canvas id="chart-wait-district" height="180"></canvas>
+    </div>
+
+    <div style="background:white; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08); padding:16px;">
+      <h2 style="font-size:1.0em; font-weight:700; margin-bottom:12px; color:#2563EB; border-bottom:1px solid #EEE; padding-bottom:4px;">
+        Saturation index by district (λ / μ)
+      </h2>
+      <canvas id="chart-crowd-district" height="180"></canvas>
+      <div id="crowd-note" style="font-size:0.75em; color:#9ca3af; margin-top:8px;">
+        Values &gt; 1 indicate districts where demand exceeds average capacity.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+  // ======================
+  // 1. Supabase config
+  // ======================
+  const SUPABASE_URL  = "https://rrbuwzcoiyncvmzctvnr.supabase.co";
+  const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyYnV3emNvaXluY3ZtemN0dm5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMxNTcxNTMsImV4cCI6MjA3ODczMzE1M30.2pRgInMTIFJi-aPipsadQF4WzeceMjPcPXPY4PjnTss";
+
+  function sbFetch(pathWithQuery) {
+    return fetch(`${SUPABASE_URL}${pathWithQuery}`, {
+      headers: {
+        "apikey": SUPABASE_ANON,
+        "Authorization": `Bearer ${SUPABASE_ANON}`
+      }
+    }).then(r => {
+      if (!r.ok) {
+        console.error("Supabase error", r.status, r.statusText);
+      }
+      return r.json();
+    });
+  }
+
+  const runSelect = document.getElementById('run-select');
+  const runMeta   = document.getElementById('run-meta');
+  const linesSummaryText = document.getElementById('lines-summary-text');
+
+  let chartLinesSummary = null;
+  let chartLinesTop = null;
+  let chartWaitDistrict = null;
+  let chartCrowdDistrict = null;
+
+  // Colores corporativos
+  const COLOR_BLUE = '#2563EB'; // Azul principal
+  const COLOR_RED  = '#EF4444'; // Rojo para datos negativos o > 1 (Saturación)
+  const COLOR_GREEN= '#10B981'; // Verde para datos positivos (Boosted)
+  const COLOR_GRAY = '#9CA3AF'; // Gris para datos neutrales (No change)
+
+
+  // ======================
+  // 2. Load runs list
+  // ======================
+  async function loadRuns() {
+    const runs = await sbFetch("/rest/v1/runs?select=run_id,scenario,created_at&order=run_id.desc");
+    runSelect.innerHTML = "";
+
+    if (!runs || runs.length === 0) {
+      runSelect.innerHTML = "<option value=''>There are no runs yet</option>";
+      runMeta.textContent = "";
+      return;
+    }
+
+    for (const r of runs) {
+      const opt = document.createElement("option");
+      opt.value = r.run_id;
+      const fecha = r.created_at ? new Date(r.created_at).toLocaleString() : "";
+      opt.textContent = `Run ${r.run_id} — ${r.scenario || "No scenario"} (${fecha})`;
+      runSelect.appendChild(opt);
+    }
+
+    // Select most recent
+    const firstRunId = runs[0].run_id;
+    runSelect.value = firstRunId;
+    updateRunMeta(runs[0]);
+    loadRunData(firstRunId);
+  }
+
+  function updateRunMeta(runRow) {
+    if (!runRow) {
+      runMeta.textContent = "";
+      return;
+    }
+    const fecha = runRow.created_at ? new Date(runRow.created_at).toLocaleString() : "";
+    runMeta.textContent = `Scenario: ${runRow.scenario || "No scenario"} · Date: ${fecha}`;
+  }
+
+  runSelect.addEventListener("change", async (e) => {
+    const runId = e.target.value;
+    if (!runId) return;
+
+    // Fetch basic info for that run for the side text
+    const runs = await sbFetch(`/rest/v1/runs?run_id=eq.${runId}&select=run_id,scenario,created_at`);
+    updateRunMeta(runs[0]);
+    loadRunData(runId);
+  });
+
+  // ======================
+  // 3. Load data for a run
+  // ======================
+  async function loadRunData(runId) {
+    if (!runId) return;
+
+    const [freqRows, stopStatsRows, stopsRows] = await Promise.all([
+      sbFetch(`/rest/v1/run_line_freq?run_id=eq.${runId}&select=line_id,freq_before,freq_after`),
+      sbFetch(`/rest/v1/run_stop_stats?run_id=eq.${runId}&select=stop_id,lambda_obs,wait_time_min,crowding_index`),
+      sbFetch(`/rest/v1/stops?select=stop_id,district_id`)
+    ]);
+
+    // If something comes empty, clear charts
+    if (!freqRows || freqRows.length === 0) {
+      clearCharts();
+      linesSummaryText.textContent = "This run has no frequency data.";
+      return;
+    }
+
+    // Build stop -> district map
+    const stopToDistrict = {};
+    if (stopsRows && stopsRows.length) {
+      for (const s of stopsRows) {
+        stopToDistrict[s.stop_id] = s.district_id || "ND";
+      }
+    }
+
+    // ==== Line KPIs (boost/reduce) ====
+    let boosted = 0, reduced = 0, unchanged = 0;
+    const topChanges = [];
+
+    for (const r of freqRows) {
+      const before = r.freq_before || 0;
+      const after  = r.freq_after  || 0;
+      const delta  = after - before;
+
+      if (delta > 1e-6) boosted++;
+      else if (delta < -1e-6) reduced++;
+      else unchanged++;
+
+      if (before > 0) {
+        const rel = (delta / before) * 100.0;
+        topChanges.push({
+          line_id: r.line_id,
+          delta_rel_pct: rel
+        });
+      }
+    }
+
+    // Sort by absolute change desc and take top 10
+    topChanges.sort((a, b) => Math.abs(b.delta_rel_pct) - Math.abs(a.delta_rel_pct));
+    const top10 = topChanges.slice(0, 10);
+
+    // ==== District KPIs (waiting time & saturation) ====
+    const perDistrict = {}; // {d: {wait_sum, crowd_sum, lambda_sum, n}}
+
+    if (stopStatsRows && stopStatsRows.length) {
+      for (const r of stopStatsRows) {
+        const d = stopToDistrict[r.stop_id] || "ND";
+        if (!perDistrict[d]) {
+          perDistrict[d] = { wait_sum: 0, crowd_sum: 0, lambda_sum: 0, n: 0 };
+        }
+        perDistrict[d].wait_sum  += r.wait_time_min   || 0;
+        perDistrict[d].crowd_sum += r.crowding_index  || 0;
+        perDistrict[d].lambda_sum+= r.lambda_obs      || 0;
+        perDistrict[d].n += 1;
+      }
+    }
+
+    const districts = Object.keys(perDistrict).sort();
+    const waitAvg = districts.map(d => perDistrict[d].n ? perDistrict[d].wait_sum / perDistrict[d].n : 0);
+    const crowdAvg = districts.map(d => perDistrict[d].n ? perDistrict[d].crowd_sum / perDistrict[d].n : 0);
+
+    // ======================
+    // 4. Draw / update charts
+    // ======================
+    renderLinesSummaryChart(boosted, reduced, unchanged);
+    renderLinesTopChart(top10);
+    renderWaitDistrictChart(districts, waitAvg);
+    renderCrowdDistrictChart(districts, crowdAvg);
+  }
+
+  function clearCharts() {
+    for (const ch of [chartLinesSummary, chartLinesTop, chartWaitDistrict, chartCrowdDistrict]) {
+      if (ch) ch.destroy();
+    }
+    chartLinesSummary = chartLinesTop = chartWaitDistrict = chartCrowdDistrict = null;
+  }
+
+  // ======================
+  // 5. Chart functions
+  // ======================
+
+  function renderLinesSummaryChart(boosted, reduced, unchanged) {
+    if (chartLinesSummary) chartLinesSummary.destroy();
+
+    linesSummaryText.textContent =
+      `Boosted: ${boosted} · Reduced: ${reduced} · No significant change: ${unchanged}`;
+
+    const ctx = document.getElementById('chart-lines-summary').getContext('2d');
+    chartLinesSummary = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Boosted', 'Reduced', 'No change'],
+        datasets: [{
+          label: 'Number of lines',
+          data: [boosted, reduced, unchanged],
+          // Colores de barra coherentes
+          backgroundColor: [COLOR_GREEN, COLOR_RED, COLOR_GRAY],
+          borderColor: [COLOR_GREEN, COLOR_RED, COLOR_GRAY],
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 0 }
+          }
+        }
+      }
+    });
+  }
+
+  function renderLinesTopChart(top10) {
+    if (chartLinesTop) chartLinesTop.destroy();
+
+    const labels = top10.map(r => r.line_id);
+    const data   = top10.map(r => r.delta_rel_pct);
+    
+    // Colores basados en si el cambio es positivo (verde) o negativo (rojo)
+    const backgroundColors = data.map(v => v > 0 ? COLOR_GREEN : COLOR_RED);
+    const borderColors = data.map(v => v > 0 ? COLOR_GREEN : COLOR_RED);
+
+
+    const ctx = document.getElementById('chart-lines-top').getContext('2d');
+    chartLinesTop = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Relative frequency change (%)',
+          data: data,
+          backgroundColor: backgroundColors,
+          borderColor: borderColors,
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                const v = ctx.parsed.y || 0;
+                const sign = v >= 0 ? '+' : '';
+                return `${sign}${v.toFixed(1)} %`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { autoSkip: false } },
+          y: {
+            beginAtZero: false,
+            ticks: {
+              callback: v => `${v}%`
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function renderWaitDistrictChart(districts, waitAvg) {
+    if (chartWaitDistrict) chartWaitDistrict.destroy();
+
+    const ctx = document.getElementById('chart-wait-district').getContext('2d');
+    chartWaitDistrict = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: districts,
+        datasets: [{
+          label: 'Average waiting time (min)',
+          data: waitAvg,
+          // Color corporativo azul
+          backgroundColor: COLOR_BLUE,
+          borderColor: COLOR_BLUE,
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.parsed.y.toFixed(1)} min`
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+  function renderCrowdDistrictChart(districts, crowdAvg) {
+    if (chartCrowdDistrict) chartCrowdDistrict.destroy();
+
+    const ctx = document.getElementById('chart-crowd-district').getContext('2d');
+    chartCrowdDistrict = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: districts,
+        datasets: [{
+          label: 'Average saturation index (λ / μ)',
+          data: crowdAvg,
+          // Rojo si > 1, Azul si <= 1 (para consistencia con el corporativo)
+          backgroundColor: crowdAvg.map(v => v > 1.0 ? COLOR_RED : COLOR_BLUE),
+          borderColor: crowdAvg.map(v => v > 1.0 ? COLOR_RED : COLOR_BLUE),
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ctx.parsed.y.toFixed(2)
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 1 },
+            grace: '5%',
+            // Añade la línea de referencia en 1.0
+            afterBuildTicks: function(scale) {
+             scale.ticks.push({ value: 1.0, label: '1.0' });
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // ======================
+  // 6. Init
+  // ======================
+  loadRuns();
+</script>
+{% endblock %}

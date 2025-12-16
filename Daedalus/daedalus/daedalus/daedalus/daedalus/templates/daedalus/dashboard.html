@@ -1,0 +1,578 @@
+{% extends "daedalus/base.html" %}
+{% load static %}
+
+{% block extra_head %}
+  <!-- deck.gl + MapLibre -->
+  <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
+
+  <style>
+    #map-container {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+    }
+
+    /* Side panel — same as your original HTML */
+    #run-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255,255,255,0.96);
+      padding: 8px 12px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      font-size: 12px;
+      z-index: 10;
+      max-width: 340px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #run-meta { font-size: 11px; color: #555; }
+    #freq-table { font-size: 11px; max-height: 200px; overflow: auto; }
+    #freq-table table { border-collapse: collapse; width: 100%; }
+    #freq-table th, #freq-table td {
+      border: 1px solid #ddd; padding: 2px 4px; text-align: right;
+    }
+    #freq-table th {
+      background: #f3f3f3;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    #freq-table td:first-child, #freq-table th:first-child { text-align: left; }
+
+    #legend {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.9);
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      font-size: 12px;
+      z-index: 10;
+    }
+    #legend div { margin-bottom: 3px; }
+
+    #line-selected-panel {
+      position:absolute;
+      top:10px; right:10px;
+      background:rgba(255,255,255,0.96);
+      padding:6px 10px;
+      border-radius:8px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.25);
+      font-size:12px;
+      z-index:10;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div id="map-container"></div>
+
+  <!-- SIDE PANEL -->
+  <div id="run-panel">
+    <b>Run summary</b>
+    <div>
+      <label for="run-selector">Run:</label>
+      <select id="run-selector">
+        <option value="">—</option>
+      </select>
+    </div>
+
+    <div id="run-meta">Select a run to see adjusted lines.</div>
+
+    <div id="filter-controls" style="font-size:11px;">
+      Show:
+      <label><input type="radio" name="filterMode" value="all" checked> All</label>
+      <label><input type="radio" name="filterMode" value="up"> Only boosted</label>
+      <label><input type="radio" name="filterMode" value="down"> Only reduced</label>
+    </div>
+
+    <div id="freq-table"><em>No data yet.</em></div>
+    <div id="histogram" style="font-size:11px; margin-top:4px;"></div>
+  </div>
+
+  <div id="line-selected-panel">
+    <b>Selected line</b><br>
+    <span id="line-selected-label">None</span>
+  </div>
+
+  <!-- LEGEND -->
+  <div id="legend">
+    <b>Legend</b><br>
+    <div><span style="display:inline-block;width:20px;height:3px;background:#00b000;"></span> Boosted line (freq ↑)</div>
+    <div><span style="display:inline-block;width:20px;height:3px;background:#d00000;"></span> Reduced line (freq ↓)</div>
+    <div><span style="display:inline-block;width:20px;height:3px;background:#aaaaaa;"></span> Small change</div>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script>
+    const {DeckGL, ScatterplotLayer, PathLayer} = deck;
+
+    const SUPABASE_URL  = "https://rrbuwzcoiyncvmzctvnr.supabase.co";
+    const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyYnV3emNvaXluY3ZtemN0dm5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMxNTcxNTMsImV4cCI6MjA3ODczMzE1M30.2pRgInMTIFJi-aPipsadQF4WzeceMjPcPXPY4PjnTss";
+
+    function sbFetch(pathWithQuery) {
+      const url = `${SUPABASE_URL}${pathWithQuery}`;
+      return fetch(url, {
+        headers: {
+          "apikey": SUPABASE_ANON,
+          "Authorization": `Bearer ${SUPABASE_ANON}`
+        }
+      }).then(r => r.json());
+    }
+
+    // Fetch ALL stops from Supabase, paginating 1000 by 1000
+    async function fetchAllStops() {
+      const pageSize = 1000;
+      let from = 0;
+      let allStops = [];
+
+      while (true) {
+        const path = `/rest/v1/stops?select=stop_id,name,lat,lon,district_id,lambda_base`;
+        const url = `${SUPABASE_URL}${path}`;
+
+        const res = await fetch(url, {
+          headers: {
+            "apikey": SUPABASE_ANON,
+            "Authorization": `Bearer ${SUPABASE_ANON}`,
+            "Range": `${from}-${from + pageSize - 1}`
+          }
+        });
+
+        const text = await res.text();
+        const page = text ? JSON.parse(text) : [];
+
+        allStops = allStops.concat(page);
+        if (page.length < pageSize) break;
+
+        from += pageSize;
+      }
+
+      console.log("Total combined stops:", allStops.length);
+      return allStops;
+    }
+
+    // Fetch ALL line-stop relations from Supabase
+    async function fetchAllLineStops() {
+      const pageSize = 2000;
+      let from = 0;
+      let all = [];
+
+      while (true) {
+        const path = `/rest/v1/line_stops?select=line_id,stop_id`;
+        const url = `${SUPABASE_URL}${path}`;
+
+        const res = await fetch(url, {
+          headers: {
+            "apikey": SUPABASE_ANON,
+            "Authorization": `Bearer ${SUPABASE_ANON}`,
+            "Range": `${from}-${from + pageSize - 1}`
+          }
+        });
+
+        const text = await res.text();
+        const page = text ? JSON.parse(text) : [];
+
+        all = all.concat(page);
+        if (page.length < pageSize) break;
+
+        from += pageSize;
+      }
+
+      console.log("Total combined line_stops:", all.length);
+      return all;
+    }
+
+    // ========== State ==========
+    let tripsData = [];
+    let stopsData = [];
+    let lineToStops = {};
+
+    let runsList = [];
+    let freqChange = {};
+    let activeLineIds = new Set();
+    let activeStopIds = new Set();
+
+    let upLineIds = new Set();
+    let downLineIds = new Set();
+    let filterMode = "all";
+    let selectedLineId = null;
+
+    const runSelector  = document.getElementById('run-selector');
+    const runMeta      = document.getElementById('run-meta');
+    const freqTableDiv = document.getElementById('freq-table');
+    const histDiv      = document.getElementById('histogram');
+    const lineSelectedLabel = document.getElementById('line-selected-label');
+
+    // ========== Map ==========
+    const deckgl = new DeckGL({
+      container: 'map-container',
+      mapStyle: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+      initialViewState: {
+        longitude: -3.70325,
+        latitude: 40.4167,
+        zoom: 11.3,
+        pitch: 0,
+        bearing: 0
+      },
+      controller: true,
+      layers: [],
+      getTooltip: ({object, layer}) => {
+        if (!object) return null;
+        if (layer && layer.id === 'lines-layer') {
+          const baseLine = object.baseLineId;
+          const delta = (freqChange[baseLine] || 0) * 100;
+          return {
+            text: `Line ${baseLine}\nΔ freq: ${delta.toFixed(1)} %`
+          };
+        }
+        if (layer && layer.id === 'stops-layer') {
+          const lam = (object.lambdaBase || 0).toFixed(1);
+          return {
+            text: `${object.name}\nDistrict: ${object.distrito || '—'}\nBase λ: ${lam}`
+          };
+        }
+        return null;
+      }
+    });
+
+    // ========== Init ==========
+    (async function init() {
+      const [trips, stopsRows, lineStopsRows] = await Promise.all([
+        fetch("{% static 'daedalus/tripsData_all_gtfs.json' %}").then(r => r.json()),
+        fetchAllStops(),
+        fetchAllLineStops()
+      ]);
+
+      tripsData = trips;
+
+      stopsData = stopsRows.map(row => ({
+        stopId: String(row.stop_id),
+        name: row.name,
+        position: [row.lon, row.lat],
+        distrito: row.district_id,
+        lambdaBase: row.lambda_base ?? 0
+      }));
+
+      lineToStops = {};
+      for (const r of lineStopsRows) {
+        const lid = String(r.line_id);
+        const sid = String(r.stop_id);
+        if (!lineToStops[lid]) lineToStops[lid] = [];
+        lineToStops[lid].push(sid);
+      }
+
+      deckgl.setProps({ layers: getLayers() });
+      await loadRuns();
+    })();
+
+    // ========== Layers ==========
+    function getLayers() {
+      let baseSet;
+      if (filterMode === "up") {
+        baseSet = upLineIds;
+      } else if (filterMode === "down") {
+        baseSet = downLineIds;
+      } else {
+        baseSet = activeLineIds;
+      }
+
+      let visibleLineIds = new Set(baseSet);
+
+      if (selectedLineId && baseSet.has(selectedLineId)) {
+        visibleLineIds = new Set([selectedLineId]);
+      }
+
+      const filteredTrips = tripsData
+        .map(t => {
+          const fullId = String(t.routeId || "");
+          const base = fullId.replace('_out', '').replace('_in', '');
+          return { ...t, baseLineId: base };
+        })
+        .filter(t => visibleLineIds.size === 0 || visibleLineIds.has(t.baseLineId));
+
+      const linesLayer = new PathLayer({
+        id: 'lines-layer',
+        data: filteredTrips,
+        getPath: d => d.path,
+        getWidth: d => {
+          const deltaRel = freqChange[d.baseLineId] || 0;
+          const base = 80;
+          const factor = 1 + Math.min(Math.max(deltaRel, -0.7), 0.8);
+          return base * factor;
+        },
+        widthUnits: 'meters',
+        widthMinPixels: 2,
+        getColor: d => {
+          const deltaRel = freqChange[d.baseLineId] || 0;
+          if (deltaRel > 0.02) return [0, 176, 0, 230];
+          if (deltaRel < -0.02) return [208, 0, 0, 230];
+          return [160, 160, 160, 200];
+        },
+        opacity: 0.95
+      });
+
+      let visibleStopIds = new Set();
+      for (const lid of visibleLineIds) {
+        const stopsForLine = lineToStops[lid] || [];
+        for (const s of stopsForLine) visibleStopIds.add(String(s));
+      }
+
+      const filteredStops = stopsData.filter(s => visibleStopIds.has(s.stopId));
+
+      const stopsLayer = new ScatterplotLayer({
+        id: 'stops-layer',
+        data: filteredStops,
+        pickable: true,
+        autoHighlight: true,
+        getPosition: d => d.position,
+        getRadius: 65,
+        radiusUnits: 'meters',
+        radiusMinPixels: 3,
+        getFillColor: [0, 140, 255, 220]
+      });
+
+      return [linesLayer, stopsLayer];
+    }
+
+    // ========== Runs ==========
+    async function loadRuns() {
+      const runs = await sbFetch("/rest/v1/runs?select=*");
+      runsList = runs || [];
+
+      runsList.sort((a, b) => b.run_id - a.run_id);
+
+      runSelector.innerHTML = "<option value=''>—</option>";
+      for (const r of runsList) {
+        const opt = document.createElement("option");
+        opt.value = r.run_id;
+        const fecha = r.created_at ? new Date(r.created_at).toLocaleString() : "";
+        opt.textContent = `Run ${r.run_id} — ${r.scenario || ''} (${fecha})`;
+        runSelector.appendChild(opt);
+      }
+
+      if (runsList.length > 0) {
+        runSelector.value = runsList[0].run_id;
+        loadRunData(runsList[0].run_id);
+      } else {
+        runMeta.textContent = "There are no saved runs yet.";
+        freqTableDiv.innerHTML = "<em>Run the engine to create the first run.</em>";
+      }
+    }
+
+    async function loadRunData(runId) {
+      if (!runId) {
+        freqChange = {};
+        activeLineIds = new Set();
+        activeStopIds = new Set();
+        upLineIds = new Set();
+        downLineIds = new Set();
+        selectedLineId = null;
+        updateSelectedLineLabel();
+        runMeta.textContent = "Select a run to see adjusted lines.";
+        freqTableDiv.innerHTML = "<em>No data.</em>";
+        histDiv.innerHTML = "";
+        deckgl.setProps({ layers: getLayers() });
+        return;
+      }
+
+      const runIdNum = Number(runId);
+      const run = runsList.find(r => r.run_id === runIdNum);
+      if (run) {
+        const fecha = run.created_at ? new Date(run.created_at).toLocaleString() : "";
+        runMeta.textContent = `Run ${run.run_id} — ${run.scenario || 'No scenario'} — ${fecha}`;
+      }
+
+      const freqData = await sbFetch(`/rest/v1/run_line_freq?run_id=eq.${runIdNum}&select=*`);
+
+      const withDelta = freqData.map(r => ({
+        ...r,
+        deltaRel: (r.freq_after - r.freq_before) / (r.freq_before || 1)
+      }));
+
+      const topUp = withDelta
+        .filter(r => r.deltaRel > 0)
+        .sort((a, b) => b.deltaRel - a.deltaRel)
+        .slice(0, 10);
+
+      const topDown = withDelta
+        .filter(r => r.deltaRel < 0)
+        .sort((a, b) => a.deltaRel - b.deltaRel)
+        .slice(0, 10);
+
+      const finalRows = [...topUp, ...topDown];
+
+      freqChange = {};
+      activeLineIds = new Set();
+      upLineIds = new Set();
+      downLineIds = new Set();
+      activeStopIds = new Set();
+
+      for (const r of finalRows) {
+        const lineId = String(r.line_id);
+        freqChange[lineId] = r.deltaRel;
+        activeLineIds.add(lineId);
+
+        if (r.deltaRel > 0) upLineIds.add(lineId);
+        else if (r.deltaRel < 0) downLineIds.add(lineId);
+
+        const stopsForLine = lineToStops[lineId] || [];
+        for (const s of stopsForLine) activeStopIds.add(String(s));
+      }
+
+      updateFrequencyTable(topUp, topDown);
+      updateHistogram(topUp, topDown);
+      deckgl.setProps({ layers: getLayers() });
+
+      selectedLineId = null;
+      updateSelectedLineLabel();
+    }
+
+    function updateFrequencyTable(topUp, topDown) {
+      if ((!topUp || topUp.length === 0) && (!topDown || topDown.length === 0)) {
+        freqTableDiv.innerHTML = "<em>No significant frequency changes.</em>";
+        return;
+      }
+
+      let html = `
+        <table>
+          <tr>
+            <th>Line</th>
+            <th>Before</th>
+            <th>After</th>
+            <th>Δ %</th>
+          </tr>
+      `;
+
+      if (topUp.length > 0) {
+        html += `
+          <tr><th colspan="4" style="text-align:center;background:#e8f8e8;">Top 10 boosted</th></tr>
+        `;
+        for (const r of topUp) {
+          const pct = r.deltaRel * 100;
+          html += `
+            <tr>
+              <td class="line-cell" data-line-id="${r.line_id}" style="cursor:pointer; text-decoration:underline;">
+                ${r.line_id}
+              </td>
+              <td>${r.freq_before.toFixed(2)}</td>
+              <td>${r.freq_after.toFixed(2)}</td>
+              <td style="color:green">${pct.toFixed(1)}%</td>
+            </tr>
+          `;
+        }
+      }
+
+      if (topDown.length > 0) {
+        html += `
+          <tr><th colspan="4" style="text-align:center;background:#fdecec;">Top 10 reduced</th></tr>
+        `;
+        for (const r of topDown) {
+          const pct = r.deltaRel * 100;
+          html += `
+            <tr>
+              <td class="line-cell" data-line-id="${r.line_id}" style="cursor:pointer; text-decoration:underline;">
+                ${r.line_id}
+              </td>
+              <td>${r.freq_before.toFixed(2)}</td>
+              <td>${r.freq_after.toFixed(2)}</td>
+              <td style="color:red">${pct.toFixed(1)}%</td>
+            </tr>
+          `;
+        }
+      }
+
+      html += "</table>";
+      freqTableDiv.innerHTML = html;
+
+      document.querySelectorAll('#freq-table td.line-cell').forEach(td => {
+        td.addEventListener('click', e => {
+          const lid = e.currentTarget.dataset.lineId;
+
+          if (selectedLineId === lid) {
+            selectedLineId = null;
+          } else {
+            selectedLineId = lid;
+          }
+
+          updateSelectedLineLabel([...topUp, ...topDown]);
+          deckgl.setProps({ layers: getLayers() });
+        });
+      });
+    }
+
+    function updateHistogram(topUp, topDown) {
+      const rows = [...topUp, ...topDown];
+      if (!rows || rows.length === 0) {
+        histDiv.innerHTML = "";
+        return;
+      }
+
+      const absValues = rows.map(r => Math.abs(r.deltaRel));
+      const maxAbs = Math.max(...absValues, 0.0001);
+
+      let html = "<b>Relative change per line</b><br>";
+
+      for (const r of rows) {
+        const pct = r.deltaRel * 100;
+        const width = Math.max(5, (Math.abs(r.deltaRel) / maxAbs) * 90);
+        const color = pct > 0 ? "#00b000" : "#d00000";
+
+        html += `
+          <div style="display:flex; align-items:center; margin:1px 0;">
+            <span style="width:32px;">${r.line_id}</span>
+            <div style="flex:1; background:#f0f0f0; height:6px; margin:0 4px; position:relative;">
+              <div style="background:${color}; width:${width}%; height:100%;"></div>
+            </div>
+            <span style="width:50px; text-align:right; color:${color};">
+              ${pct.toFixed(1)}%
+            </span>
+          </div>
+        `;
+      }
+
+      histDiv.innerHTML = html;
+    }
+
+    function updateSelectedLineLabel(fromRows = null) {
+      if (!selectedLineId) {
+        lineSelectedLabel.textContent = "None";
+        return;
+      }
+
+      let deltaRel = null;
+      if (fromRows && Array.isArray(fromRows)) {
+        const found = fromRows.find(r => String(r.line_id) === String(selectedLineId));
+        if (found && typeof found.deltaRel === "number") {
+          deltaRel = found.deltaRel;
+        }
+      }
+
+      if (deltaRel === null) {
+        lineSelectedLabel.textContent = `Line ${selectedLineId}`;
+      } else {
+        const pct = deltaRel * 100;
+        const tipo = pct > 0 ? "boosted" : "reduced";
+        lineSelectedLabel.textContent = `Line ${selectedLineId} (${tipo} ${pct.toFixed(1)}%)`;
+      }
+    }
+
+    runSelector.addEventListener("change", e => {
+      const runId = e.target.value;
+      loadRunData(runId);
+    });
+
+    document.querySelectorAll('input[name="filterMode"]').forEach(radio => {
+      radio.addEventListener('change', e => {
+        filterMode = e.target.value;
+        deckgl.setProps({ layers: getLayers() });
+      });
+    });
+  </script>
+{% endblock %}
+

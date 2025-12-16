@@ -1,0 +1,245 @@
+{% extends "daedalus/base.html" %}
+
+{% block content %}
+<style>
+  .ads-container {
+    padding: 20px;
+    max-width: 1100px;
+    margin: auto;
+  }
+
+  h2 {
+    margin-bottom: 20px;
+  }
+
+  form.ad-form {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 25px;
+    border: 1px solid #ddd;
+  }
+
+  .ad-form div {
+    margin-bottom: 10px;
+  }
+
+  .ad-form input[type="text"], .ad-form input[type="file"] {
+    padding: 6px;
+    width: 250px;
+  }
+
+  table.ads-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    font-size: 14px;
+  }
+
+  table.ads-table th {
+    background: #1f2937;
+    color: white;
+    padding: 8px;
+    text-align: left;
+  }
+
+  table.ads-table td {
+    padding: 8px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .thumb-img {
+    width: 120px;
+    height: 80px;
+    object-fit: cover;
+    cursor: pointer;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    transition: transform 0.15s ease;
+  }
+
+  .thumb-img:hover {
+    transform: scale(1.05);
+  }
+
+  /* Modal */
+  .modal-bg {
+    display:none;
+    position: fixed;
+    top:0; left:0;
+    width:100%;
+    height:100%;
+    background: rgba(0,0,0,0.7);
+    justify-content:center;
+    align-items:center;
+    z-index: 999;
+  }
+  .modal-content {
+    background:white;
+    padding:15px;
+    border-radius:10px;
+    max-width:80%;
+    max-height:80%;
+  }
+  #modal-img {
+    width:100%;
+    height:auto;
+    border-radius:8px;
+  }
+
+  .btn {
+    padding: 6px 12px;
+    border: none;
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+    border-radius: 5px;
+    margin-right: 5px;
+  }
+  .btn-danger {
+    background: #dc2626;
+  }
+  .btn-secondary {
+    background: #6b7280;
+  }
+</style>
+
+<div class="ads-container">
+  <h2>Ads management</h2>
+
+  {% if messages %}
+    <ul>
+      {% for message in messages %}
+        <li>{{ message }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <!-- --=== CREATE / UPDATE FORM ===-- -->
+  <h3>Create / update ad</h3>
+  <form class="ad-form" method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="create">
+
+    <div>
+      <label>Ad ID:</label>
+      <input type="text" name="ad_id" required>
+    </div>
+
+    <div>
+      <label>Name:</label>
+      <input type="text" name="name">
+    </div>
+
+    <div>
+      <label>Image:</label>
+      <input type="file" name="image" accept="image/*" required>
+    </div>
+
+    <div>
+      <label>
+        <input type="checkbox" name="active" checked> Active
+      </label>
+    </div>
+
+    <button type="submit" class="btn">Upload ad and classify</button>
+  </form>
+
+
+  <!-- --=== ADS LIST ===-- -->
+  <h3>Existing ads</h3>
+  
+  <table class="ads-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Image</th>
+        <th>Age</th>
+        <th>Gender</th>
+        <th>Product</th>
+        <th>Active</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for ad in ads %}
+        <tr>
+          <td>{{ ad.ad_id }}</td>
+          <td>{{ ad.name }}</td>
+
+          <td>
+            {% if ad.image_url %}
+              <img src="{{ ad.image_url }}" class="thumb-img" onclick="showModal('{{ ad.image_url }}')">
+            {% endif %}
+          </td>
+
+          <td>{{ ad.age_segment }}</td>
+          <td>{{ ad.gender_segment }}</td>
+          <td>{{ ad.product_segment }}</td>
+          <td>{{ ad.active }}</td>
+
+          <td>
+            <!-- Activate/deactivate -->
+            <form method="post" style="display:inline;">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="toggle_active">
+              <input type="hidden" name="ad_id" value="{{ ad.ad_id }}">
+              <input type="hidden" name="current_active" value="{{ ad.active }}">
+              <button class="btn btn-secondary" type="submit">
+                {% if ad.active %}Deactivate{% else %}Activate{% endif %}
+              </button>
+            </form>
+
+            <!-- Delete -->
+            <form method="post" style="display:inline;" onsubmit="return confirm('Delete {{ ad.ad_id }}?');">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="ad_id" value="{{ ad.ad_id }}">
+              <button class="btn btn-danger" type="submit">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="8">There are no ads yet.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- PAGINATION -->
+  {% if ads.has_other_pages %}
+    <div style="margin-top:10px;">
+      {% if ads.has_previous %}
+        <a href="?page={{ ads.previous_page_number }}">&laquo; Previous</a>
+      {% endif %}
+
+      <span style="margin:0 10px;">
+        Page {{ ads.number }} of {{ ads.paginator.num_pages }}
+      </span>
+
+      {% if ads.has_next %}
+        <a href="?page={{ ads.next_page_number }}">Next &raquo;</a>
+      {% endif %}
+    </div>
+  {% endif %}
+
+</div>
+
+<!-- MODAL -->
+<div id="modal" class="modal-bg" onclick="this.style.display='none'">
+  <div class="modal-content" onclick="event.stopPropagation();">
+    <img id="modal-img">
+  </div>
+</div>
+
+<script>
+  function showModal(url) {
+    document.getElementById("modal-img").src = url;
+    document.getElementById("modal").style.display = "flex";
+  }
+</script>
+
+{% endblock %}

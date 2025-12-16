@@ -1,0 +1,134 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Daedalus</title>
+  <link rel="icon" type="image/png" href="{% static 'daedalus/img/daedalus_logo.png' %}">
+
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+    }
+    header {
+      background: #0b3d91;
+      color: white;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header .title {
+      font-weight: 600;
+    }
+    nav a {
+      color: white;
+      text-decoration: none;
+      margin-left: 12px;
+      font-size: 14px;
+    }
+    nav a:hover {
+      text-decoration: underline;
+    }
+    main {
+      position: relative;
+      height: calc(100vh - 48px);
+      overflow: hidden;
+    }
+
+    .logout-form {
+      display: inline;
+      margin-left: 6px;
+    }
+    .logout-button {
+      background: transparent;
+      border: none;
+      color: #f97373;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 0;
+    }
+    .logout-button:hover {
+      text-decoration: underline;
+    }
+  </style>
+
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <header style="height:50px; display:flex; align-items:center; padding:0 16px;
+                  background:#111827; color:white; gap:16px;">
+    <div style="font-weight:bold;">Daedalus</div>
+
+    <nav style="display:flex; gap:12px; font-size:14px; align-items:center;">
+      <a href="{% url 'daedalus-home' %}" style="color:white; text-decoration:none;">
+        Home
+      </a>
+
+      {% if user.is_authenticated %}
+        <a href="{% url 'daedalus-transport-init' %}" style="color:white; text-decoration:none;">
+          Transport init
+        </a>
+        <a href="{% url 'daedalus-transport-zones' %}" style="color:white; text-decoration:none;">
+          Transport zones
+        </a>
+        <a href="{% url 'daedalus-transport-results' %}" style="color:white; text-decoration:none;">
+          Transport results
+        </a>
+        <a href="{% url 'daedalus-transport-incidences' %}" style="color:white; text-decoration:none;">
+          Transport incidences
+        </a>
+        <a href="{% url 'daedalus-dashboard' %}" style="color:white; text-decoration:none;">
+          Frequency settings
+        </a>
+        <a href="{% url 'daedalus-dashboard1' %}" style="color:white; text-decoration:none;">
+          Dashboard
+        </a>
+        <a href="{% url 'daedalus-dynamic' %}" style="color:white; text-decoration:none;">
+          Dynamic map
+        </a>
+        <a href="{% url 'daedalus-runs' %}" style="color:white; text-decoration:none;">
+          Runs & reports
+        </a>
+        <a href="{% url 'daedalus-hotspots' %}" style="color:white; text-decoration:none;">
+          Hotspots
+        </a>
+        <a href="{% url 'daedalus-ads' %}" style="color:white; text-decoration:none;">
+          Ads panel
+        </a>
+        <a href="{% url 'daedalus-ads-map' %}" style="color:white; text-decoration:none;">
+          Ads map
+        </a>
+        <a href="{% url 'daedalus-ads-admin' %}" style="color:white; text-decoration:none;">
+          Ads management
+        </a>
+        
+        <span style="color:#9ca3af; margin:0 4px;">|</span>
+        <span style="color:#9ca3af; font-size:12px;">{{ user.username }}</span>
+
+        <!-- Logout via POST -->
+        <form class="logout-form" action="{% url 'daedalus-logout' %}" method="post">
+          {% csrf_token %}
+          <button type="submit" class="logout-button">
+            Log out
+          </button>
+        </form>
+      {% else %}
+        <span style="color:#9ca3af; margin:0 4px;">|</span>
+        <a href="{% url 'daedalus-login' %}" style="color:#a5b4fc; text-decoration:none;">
+          Log in
+        </a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <main style="position:relative; height:calc(100vh - 50px);">
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

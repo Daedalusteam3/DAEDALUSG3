@@ -1,0 +1,92 @@
+{% extends "daedalus/base.html" %}
+{% block content %}
+<div style="padding:20px; max-width:1000px; margin:0 auto; font-size:1.15em;">
+
+  <h2 style="margin:0 0 16px 0; font-size:1.5em; border-bottom:2px solid #EEE; padding-bottom:8px;">Transport · Zone selection</h2>
+
+  {% if not outputs_ready %}
+    <div style="background:#fff7ed; border:1px solid #fdba74; color:#9a3412; padding:15px; border-radius:10px; margin:18px 0;">
+      <div style="font-weight:700; margin-bottom:4px;">Warning: GTFS outputs are not ready yet.</div>
+      Run <a href="{% url 'daedalus-transport-init' %}" style="color:#9a3412; font-weight:600;">Transport Init</a> → <i>Process GTFS</i> first.
+    </div>
+  {% endif %}
+
+  <form method="post" action="{% url 'daedalus-transport-zones' %}"
+        style="background:white; padding:20px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,.1); margin-bottom:30px;">
+    {% csrf_token %}
+    <input type="hidden" name="mode" value="places"/>
+
+    <h3 style="margin:0 0 15px 0; border-bottom:2px solid #2563EB; padding-bottom:5px; color:#2563EB;">Option A · Search by place name</h3>
+    <div style="font-size:0.85em; color:#666; margin-bottom:18px;">
+      Example: <i>“Campus Sur UPM Madrid”</i> → <i>“Plaza Mayor Madrid”</i>. Uses geographical search.
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+      <div>
+        <label style="font-weight:600; display:block; margin-bottom:5px;">Origin place</label>
+        <input name="origin_place" value="{{ origin_place_default }}" required
+              placeholder="e.g. Campus Sur UPM Madrid"
+              style="width:100%; padding:12px; border:1px solid #CCC; border-radius:6px; box-sizing:border-box;">
+      </div>
+
+      <div>
+        <label style="font-weight:600; display:block; margin-bottom:5px;">Destination place</label>
+        <input name="dest_place" value="{{ dest_place_default }}" required
+              placeholder="e.g. Plaza Mayor Madrid"
+              style="width:100%; padding:12px; border:1px solid #CCC; border-radius:6px; box-sizing:border-box;">
+      </div>
+    </div>
+
+    <div style="margin-top:20px;">
+      <button type="submit"
+        style="padding:12px 20px; cursor:pointer; background:#2563EB; color:white; border:none; border-radius:6px; font-weight:600; transition:background 0.3s ease;">
+        Find Route
+      </button>
+    </div>
+  </form>
+
+  <form method="post" action="{% url 'daedalus-transport-zones' %}"
+        style="background:white; padding:20px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,.1);">
+    {% csrf_token %}
+    <input type="hidden" name="mode" value="zones"/>
+
+    <h3 style="margin:0 0 15px 0; border-bottom:2px solid #2563EB; padding-bottom:5px; color:#2563EB;">Option B · Select zones manually</h3>
+    <div style="font-size:0.85em; color:#666; margin-bottom:18px;">
+      Select zones directly from the processed GTFS data.
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+      <div>
+        <label style="font-weight:600; display:block; margin-bottom:5px;">Origin zone</label>
+        <select name="origin_zone" required style="width:100%; padding:12px; border:1px solid #CCC; border-radius:6px; margin-bottom:5px; box-sizing:border-box;">
+          {% for z in zones %}
+            <option value="{{ z }}" {% if z == origin_default %}selected{% endif %}>{{ z }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label style="font-weight:600; display:block; margin-bottom:5px;">Destination zone</label>
+        <select name="dest_zone" required style="width:100%; padding:12px; border:1px solid #CCC; border-radius:6px; margin-bottom:5px; box-sizing:border-box;">
+          {% for z in zones %}
+            <option value="{{ z }}" {% if z == dest_default %}selected{% endif %}>{{ z }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:12px; margin-top:20px;">
+      <button type="submit"
+        style="padding:12px 20px; cursor:pointer; background:#2563EB; color:white; border:none; border-radius:6px; font-weight:600; transition:background 0.3s ease;">
+        Find Route
+      </button>
+
+      <a href="{% url 'daedalus-transport-init' %}"
+        style="padding:12px 20px; text-decoration:none; background:#F3F4F6; color:#4B5563; border-radius:6px; font-weight:600; border:1px solid #D1D5DB;">
+        ← Back to init
+      </a>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

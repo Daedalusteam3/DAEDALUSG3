@@ -1,0 +1,474 @@
+{% extends "daedalus/base.html" %}
+{% load static %}
+
+{% block extra_head %}
+<style>
+    .wrap {
+        /* padding original 18px -> 23px */
+        padding: 23px;
+        /* max-width original 980px -> 1274px */
+        max-width: 1274px;
+        margin: 0 auto;
+        /* Nueva fuente base para escalar todo */
+        font-size: 1.3em;
+    }
+
+    .card {
+        background: white;
+        /* border-radius original 12px -> 15px */
+        border-radius: 15px;
+        /* padding original 16px -> 21px */
+        padding: 21px;
+        box-shadow: 0 13px 32px rgba(0, 0, 0, .08);
+    }
+
+    /* Grid y Drop Zones */
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        /* gap original 12px -> 15px */
+        gap: 15px;
+        /* margin-top original 12px -> 15px */
+        margin-top: 15px;
+    }
+
+    .drop {
+        border: 2px dashed #cbd5e1;
+        /* border-radius original 12px -> 15px */
+        border-radius: 15px;
+        /* padding original 14px -> 18px */
+        padding: 18px;
+        /* min-height original 140px -> 180px */
+        min-height: 180px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        /* gap original 8px -> 10px */
+        gap: 10px;
+        background: #f8fafc;
+        cursor: pointer;
+        user-select: none;
+        transition: all 0.2s ease;
+    }
+
+    .drop.dragover {
+        border-color: #60a5fa;
+        background: #eff6ff;
+    }
+
+    /* Estilo de éxito al seleccionar */
+    .drop.selected {
+        border-color: #10b981;
+        background: #ecfdf5;
+    }
+
+    .drop .label {
+        font-weight: 700;
+        /* Color original #111827 */
+        color: #111827;
+        font-size: 1.1em; /* Escalado relativo */
+    }
+
+    .drop .hint {
+        /* font-size original 12px -> 15px */
+        font-size: 0.7em;
+        color: #6b7280;
+        text-align: center;
+    }
+
+    /* Pastilla del Archivo */
+    .filepill {
+        /* font-size original 12px -> 15px */
+        font-size: 0.8em;
+        /* padding original 6px 10px -> 8px 13px */
+        padding: 8px 13px;
+        /* Color original #111827 */
+        background: #111827;
+        color: white;
+        border-radius: 999px;
+        display: none;
+    }
+
+    /* Acciones de Subida */
+    .actions {
+        /* margin-top original 14px -> 18px */
+        margin-top: 18px;
+        display: flex;
+        /* gap original 10px -> 13px */
+        gap: 13px;
+        align-items: center;
+    }
+
+    .btn {
+        border: 0;
+        /* border-radius original 10px -> 12px */
+        border-radius: 12px;
+        /* padding original 10px 14px -> 13px 18px */
+        padding: 13px 18px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background-color 0.2s ease;
+        font-size: 0.85em; /* Escalado relativo */
+    }
+
+    .btn-primary {
+        /* Color original #111827 */
+        background: #111827;
+        color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background: #374151;
+    }
+
+    .btn-secondary {
+        background: #e5e7eb;
+        /* Color original #111827 */
+        color: #111827;
+    }
+
+    /* ------------------------------------------------ */
+    /* Estilos del Proceso y Logs */
+    /* ------------------------------------------------ */
+    .process-section {
+        /* margin-top original 18px -> 23px */
+        margin-top: 23px;
+        /* padding-top original 18px -> 23px */
+        padding-top: 23px;
+        border-top: 1px solid #e5e7eb;
+    }
+
+    .process-btn-primary {
+        /* Mantenemos el color verde de la lógica de procesamiento */
+        background: #22c55e;
+        color: white;
+        transition: background-color 0.2s ease;
+    }
+
+    .process-btn-primary:hover:not(:disabled) {
+        background: #15803d;
+    }
+
+    .process-btn-primary:disabled {
+        background: #9ca3af;
+        cursor: not-allowed;
+    }
+
+    .logs-pre {
+        background: #111827;
+        color: #e5e7eb;
+        /* padding original 12px -> 15px */
+        padding: 15px;
+        /* border-radius original 8px -> 10px */
+        border-radius: 10px;
+        overflow: auto;
+        /* max-height original 400px -> 520px */
+        max-height: 520px;
+        /* font-size original 0.85em -> 1.0em */
+        font-size: 0.7em;
+    }
+
+    /* Mensajes de feedback */
+    .msgs {
+        /* margin original 12px 0 -> 15px 0 */
+        margin: 15px 0;
+    }
+
+    .msg {
+        /* padding original 10px 12px -> 13px 15px */
+        padding: 13px 15px;
+        /* border-radius original 10px -> 12px */
+        border-radius: 12px;
+        /* margin-bottom original 8px -> 10px */
+        margin-bottom: 10px;
+        /* font-size original 14px -> 18px */
+        font-size: 0.85em;
+    }
+
+    .msg-success {
+        background: #ecfdf5;
+        color: #065f46;
+        border: 1px solid #a7f3d0;
+    }
+
+    .msg-error {
+        background: #fef2f2;
+        color: #991b1b;
+        border: 1px solid #fecaca;
+    }
+
+    /* Spinner */
+    @keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    .spinner {
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top: 2px solid white;
+        border-radius: 50%;
+        /* width/height original 14px -> 18px */
+        width: 18px;
+        height: 18px;
+        animation: spin 1s linear infinite;
+        display: inline-block;
+        /* margin-right original 6px -> 8px */
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wrap">
+    <h2 style="margin-bottom: 20px; font-size:1.3em;">Transport · Initialization</h2>
+    <div class="card">
+        <h3 style="margin:0 0 8px 0; font-size:1.1em; color:#2563EB;">1) Upload GTFS ZIPs</h3>
+        <div style="color:#6b7280; font-size:0.85em;">
+            Upload the 3 GTFS ZIP files. They will be stored as: <code>media/emt.zip</code>, <code>media/metro.zip</code>, <code>media/cercanias.zip</code>.
+        </div>
+
+        <div class="msgs">
+            {% if messages %}
+            {% for m in messages %}
+            <div class="msg {% if m.tags == 'success' %}msg-success{% else %}msg-error{% endif %}">
+                {{ m }}
+            </div>
+            {% endfor %}
+            {% endif %}
+        </div>
+
+        <form method="post" enctype="multipart/form-data" id="uploadForm" action="{% url 'daedalus-transport-init' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="upload" />
+
+            <input type="file" name="emt_zip" id="emtInput" accept=".zip" hidden required>
+            <input type="file" name="metro_zip" id="metroInput" accept=".zip" hidden required>
+            <input type="file" name="cercanias_zip" id="cercInput" accept=".zip" hidden required>
+
+            <div class="grid">
+                <div class="drop" data-input="emtInput" data-pill="emtPill">
+                    <div class="label">emt.zip (EMT)</div>
+                    <div class="hint">Drag & drop here or click to choose</div>
+                    <div class="filepill" id="emtPill"></div>
+                </div>
+
+                <div class="drop" data-input="metroInput" data-pill="metroPill">
+                    <div class="label">metro.zip (Metro)</div>
+                    <div class="hint">Drag & drop here or click to choose</div>
+                    <div class="filepill" id="metroPill"></div>
+                </div>
+
+                <div class="drop" data-input="cercInput" data-pill="cercPill">
+                    <div class="label">cercanias.zip (Cercanías)</div>
+                    <div class="hint">Drag & drop here or click to choose</div>
+                    <div class="filepill" id="cercPill"></div>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button type="submit" class="btn btn-primary" id="uploadBtn" disabled>
+                    Upload
+                </button>
+                <button type="button" class="btn btn-secondary" id="clearBtn">Clear</button>
+                <span style="color:#6b7280; font-size:0.7em;">
+                    Tip: You can replace the ZIPs anytime by uploading again.
+                </span>
+            </div>
+        </form>
+    </div>
+
+    <div class="card process-section">
+        <h3 style="margin:0 0 8px 0; font-size:1.1em; color:#2563EB;">2) Process GTFS Data</h3>
+        <div style="color:#6b7280; font-size:0.85em; margin-bottom: 15px;">
+            Once all three files are uploaded, click here to process them into the database. 
+        </div>
+
+        <form method="post" action="{% url 'daedalus-transport-init' %}" id="processForm">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="process" />
+            <button type="submit" class="btn btn-primary process-btn-primary" id="processBtn" {% if not uploads_present %}disabled{% endif %}>
+                Process GTFS
+            </button>
+            {% if not uploads_present %}
+            <p style="color:#b45309; font-size:0.85em; margin-top:8px; display:inline-block; margin-left: 10px;">
+                Upload the 3 ZIP files first.
+            </p>
+            {% endif %}
+        </form>
+    </div>
+
+
+    {% if result %}
+    <div class="card process-section">
+        <h3 style="margin:0 0 8px 0; font-size:1.1em; color:#2563EB;">Pipeline logs</h3>
+        <pre class="logs-pre">{% for line in result.logs %}{{ line }}
+{% endfor %}</pre>
+
+        <h3 style="margin-top:23px; font-size:1.1em; color:#2563EB;">Outputs</h3>
+        <ul style="list-style-type: none; padding: 0;">
+            {% for k,v in result.outputs.items %}
+            <li style="margin-bottom: 6px; font-size:0.85em;"><b>{{ k }}</b> → <code>{{ v }}</code></li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const INPUTS = ['emt', 'metro', 'cerc'];
+    const fileStates = { emt: false, metro: false, cerc: false };
+    const uploadBtn = document.getElementById('uploadBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const processBtn = document.getElementById('processBtn');
+    const uploadForm = document.getElementById('uploadForm');
+    const processForm = document.getElementById('processForm');
+
+    // Inicializar el estado de los archivos al cargar la página (para el botón de Upload)
+    document.addEventListener('DOMContentLoaded', () => {
+        updateUploadButtonState();
+    });
+
+    /**
+     * Actualiza la pastilla de archivo y devuelve true/false si el archivo es válido.
+     */
+    function setPill(pillId, file, dropEl) {
+        const pill = document.getElementById(pillId);
+
+        // Si no hay archivo, limpiar el estado visual
+        if (!file) {
+            pill.style.display = "none";
+            pill.textContent = "";
+            dropEl.classList.remove("selected");
+            return false;
+        }
+
+        // Validación simple para el .zip
+        if (!file.name.toLowerCase().endsWith(".zip")) {
+            alert("Error: Please select a .zip file");
+            dropEl.classList.remove("selected");
+            return false;
+        }
+
+        // Éxito: actualizar pastilla y estilo
+        pill.textContent = file.name;
+        pill.style.display = "inline-block";
+        dropEl.classList.add("selected");
+        return true;
+    }
+
+    /**
+     * Habilita o deshabilita el botón de Subida (Upload).
+     */
+    function updateUploadButtonState() {
+        // Verifica si todos los archivos están seleccionados y son válidos
+        const allSelected = INPUTS.every(key => fileStates[key]);
+        uploadBtn.disabled = !allSelected;
+
+        if (!allSelected) {
+            // Estilo por defecto cuando está deshabilitado
+            uploadBtn.innerHTML = 'Upload';
+        }
+    }
+
+    // Listener de Subida: Muestra spinner y deshabilita el botón
+    uploadForm.addEventListener('submit', function() {
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = '<span class="spinner"></span> Uploading...';
+    });
+
+    // Listener de Procesamiento: Muestra spinner y deshabilita el botón
+    processForm.addEventListener('submit', function() {
+        processBtn.disabled = true;
+        processBtn.innerHTML = '<span class="spinner"></span> Processing...';
+    });
+
+    /**
+     * Conecta la lógica de arrastrar/soltar/click/cambio al elemento.
+     */
+    function wireDrop(dropEl, inputEl, type) {
+        const pillId = type + 'Pill';
+
+        // 1. Click en la zona abre el diálogo de archivo
+        dropEl.addEventListener("click", () => inputEl.click());
+
+        // 2. Cambio en el input de archivo (después de click o drop)
+        inputEl.addEventListener("change", () => {
+            const file = inputEl.files && inputEl.files[0] ? inputEl.files[0] : null;
+            
+            // Actualiza el estado lógico y visual
+            fileStates[type] = setPill(pillId, file, dropEl);
+            
+            // Actualiza la disponibilidad del botón de Upload
+            updateUploadButtonState();
+        });
+
+        // 3. Drag Over: Resaltar la zona (feedback visual)
+        dropEl.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropEl.classList.add("dragover");
+        });
+
+        // 4. Drag Leave: Quitar el resaltado
+        dropEl.addEventListener("dragleave", () => {
+            dropEl.classList.remove("dragover");
+        });
+
+        // 5. Drop: Manejar el archivo soltado
+        dropEl.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropEl.classList.remove("dragover");
+
+            const files = e.dataTransfer.files;
+            if (!files || files.length === 0) return;
+
+            const file = files[0];
+
+            // Asignar el archivo al input usando DataTransfer
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            inputEl.files = dt.files;
+
+            // Disparar el evento 'change' para activar la lógica de validación y estado
+            inputEl.dispatchEvent(new Event('change'));
+        });
+    }
+
+    // Obtener y cablear todos los elementos de Drop Zone
+    document.querySelectorAll('.drop').forEach(dropEl => {
+        const inputId = dropEl.getAttribute('data-input');
+        const inputEl = document.getElementById(inputId);
+        const type = dropEl.getAttribute('data-input').replace('Input', '').toLowerCase();
+
+        if (inputEl && type) {
+            wireDrop(dropEl, inputEl, type);
+        }
+    });
+
+    // Listener del botón Clear: Limpia inputs, pills y estados
+    clearBtn.addEventListener("click", () => {
+        document.getElementById("emtInput").value = "";
+        document.getElementById("metroInput").value = "";
+        document.getElementById("cercInput").value = "";
+
+        // Resetear estados visuales y lógicos
+        document.querySelectorAll('.drop').forEach(dropEl => {
+            const type = dropEl.getAttribute('data-input').replace('Input', '').toLowerCase();
+            const pillId = type + 'Pill';
+
+            setPill(pillId, null, dropEl);
+            fileStates[type] = false;
+        });
+
+        updateUploadButtonState();
+    });
+</script>
+{% endblock %}

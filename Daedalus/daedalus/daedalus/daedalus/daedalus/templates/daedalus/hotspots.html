@@ -1,0 +1,486 @@
+{% extends "daedalus/base.html" %}
+
+{% block title %}Hotspots · Daedalus{% endblock %}
+
+{% block extra_head %}
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <style>
+    #hotspots-map {
+      width: 100%;
+      height: 520px;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+      overflow: hidden;
+    }
+
+    /* Detail panel on the right */
+    #hotspots-layout {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+
+    @media (max-width: 980px) {
+      #hotspots-layout {
+        flex-direction: column;
+      }
+    }
+
+    #hotspot-detail {
+      flex: 0 0 320px;
+      max-width: 360px;
+      background: #f9fafb;
+      border-radius: 12px;
+      padding: 12px 14px;
+      border: 1px solid #e5e7eb;
+      font-size: 13px;
+      color: #374151;
+    }
+
+    #hotspot-detail h2 {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0 0 4px 0;
+      color: #111827;
+    }
+
+    #hotspot-detail .detail-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+      color: #6b7280;
+      margin-bottom: 2px;
+    }
+
+    #hotspot-detail .lines-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    #hotspot-detail .line-pill {
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #e5f3ff;
+      border: 1px solid #bfdbfe;
+      font-size: 11px;
+      color: #1d4ed8;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 1200px; margin: 24px auto 40px auto; padding: 0 16px;">
+  <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 4px; color:#111827;">
+    Hotspots map
+  </h1>
+  <p style="margin-bottom: 16px; color:#4b5563; font-size: 14px;">
+    Visualize the stops with the highest waiting time and crowding for each
+    <strong>run</strong> of the engine. Larger and redder circles indicate
+    bigger issues (crowding index and waiting time).
+  </p>
+
+  <!-- Controls -->
+  <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom: 12px;">
+    <div>
+      <label for="run-select" style="font-size:14px; color:#374151;">Run:</label><br>
+      <select id="run-select"
+              style="min-width:260px; padding:4px 8px; font-size:14px; border-radius:6px; border:1px solid #d1d5db;">
+        <option value="">Loading runs…</option>
+      </select>
+    </div>
+
+    <div>
+      <label for="metric-select" style="font-size:14px; color:#374151;">Metric:</label><br>
+      <select id="metric-select"
+              style="min-width:190px; padding:4px 8px; font-size:14px; border-radius:6px; border:1px solid #d1d5db;">
+        <option value="crowding_index">Crowding index (λ/μ)</option>
+        <option value="wait_time_min">Average waiting time (min)</option>
+      </select>
+    </div>
+
+    <div>
+      <label for="threshold-input" style="font-size:14px; color:#374151;">
+        Minimum threshold:
+      </label><br>
+      <input id="threshold-input"
+             type="number"
+             step="0.1"
+             value="1.0"
+             style="width:90px; padding:4px 6px; font-size:14px; border-radius:6px; border:1px solid #d1d5db;">
+      <span id="threshold-unit" style="font-size:12px; color:#6b7280;">(λ/μ)</span>
+    </div>
+
+    <div style="font-size:12px; color:#6b7280; margin-top:12px;">
+      <div id="run-meta"></div>
+      <div id="hotspots-summary"></div>
+    </div>
+  </div>
+
+  <!-- Layout map + panel -->
+  <div id="hotspots-layout">
+    <div style="flex:1 1 680px; min-width: 0;">
+      <div id="hotspots-map"></div>
+      <div style="margin-top:8px; font-size:11px; color:#9ca3af;">
+        Larger circles = higher metric values. Color goes from green
+        (low) to red (high). Only stops above the threshold are shown.
+      </div>
+    </div>
+
+    <!-- Detail panel -->
+    <aside id="hotspot-detail">
+      <div class="detail-label">Stop detail</div>
+      <h2>Select a stop on the map</h2>
+      <p style="margin:4px 0 8px 0;">
+        Click on a circle to see detailed information here:
+        stop name, district, waiting time, crowding index and
+        lines serving that stop.
+      </p>
+      <div style="font-size:11px; color:#9ca3af;">
+        Tip: try changing the metric and threshold to see how
+        hotspots change.
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+  crossorigin="">
+</script>
+
+<script>
+  // ======================
+  // 1. Supabase config
+  // ======================
+  const SUPABASE_URL  = "https://rrbuwzcoiyncvmzctvnr.supabase.co";
+  // Use the same anon key as in the dynamic map
+  const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyYnV3emNvaXluY3ZtemN0dm5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMxNTcxNTMsImV4cCI6MjA3ODczMzE1M30.2pRgInMTIFJi-aPipsadQF4WzeceMjPcPXPY4PjnTss";
+
+  function sbFetch(pathWithQuery) {
+    return fetch(`${SUPABASE_URL}${pathWithQuery}`, {
+      headers: {
+        "apikey": SUPABASE_ANON,
+        "Authorization": `Bearer ${SUPABASE_ANON}`
+      }
+    }).then(r => r.json());
+  }
+
+  const runSelect       = document.getElementById("run-select");
+  const metricSelect    = document.getElementById("metric-select");
+  const thresholdInput  = document.getElementById("threshold-input");
+  const thresholdUnit   = document.getElementById("threshold-unit");
+  const runMeta         = document.getElementById("run-meta");
+  const hotspotsSummary = document.getElementById("hotspots-summary");
+  const detailPanel     = document.getElementById("hotspot-detail");
+
+  // ======================
+  // 2. Leaflet map
+  // ======================
+
+  const map = L.map("hotspots-map", {
+    center: [40.4168, -3.7038], // Madrid
+    zoom: 11.3,
+    preferCanvas: true
+  });
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+
+  let hotspotsLayer = L.layerGroup().addTo(map);
+
+  // Network indexes
+  let stopsIndex = null;       // stop_id -> {lat, lon, district, name}
+  let stopLinesIndex = null;   // stop_id -> [{id, name}]
+  let linesIndex = null;       // line_id -> {id, name}
+
+  // ======================
+  // 3. Load network (stops + lines)
+  // ======================
+  async function loadNetworkIndexes() {
+    if (stopsIndex && stopLinesIndex) {
+      return;
+    }
+
+    const [stops, lineStops, lines] = await Promise.all([
+      sbFetch("/rest/v1/stops?select=stop_id,lat,lon,district_id,name"),
+      sbFetch("/rest/v1/line_stops?select=stop_id,line_id"),
+      sbFetch("/rest/v1/lines?select=line_id,name"),
+    ]);
+
+    stopsIndex = {};
+    for (const s of stops) {
+      if (s.stop_id && s.lat != null && s.lon != null) {
+        stopsIndex[s.stop_id] = {
+          lat: s.lat,
+          lon: s.lon,
+          district: s.district_id,
+          name: s.name || ""
+        };
+      }
+    }
+
+    linesIndex = {};
+    for (const ln of lines) {
+      if (ln.line_id) {
+        linesIndex[ln.line_id] = { id: ln.line_id, name: ln.name || "" };
+      }
+    }
+
+    stopLinesIndex = {};
+    for (const ls of lineStops) {
+      const sid = ls.stop_id;
+      const lid = ls.line_id;
+      if (!sid || !lid) continue;
+      if (!stopLinesIndex[sid]) stopLinesIndex[sid] = [];
+      const lineInfo = linesIndex[lid] || { id: lid, name: "" };
+      // avoid duplicates
+      if (!stopLinesIndex[sid].some(x => x.id === lineInfo.id)) {
+        stopLinesIndex[sid].push(lineInfo);
+      }
+    }
+  }
+
+  // ======================
+  // 4. Runs
+  // ======================
+
+  async function loadRuns() {
+    const runs = await sbFetch("/rest/v1/runs?select=run_id,scenario,created_at&order=run_id.desc");
+    runSelect.innerHTML = "";
+
+    if (!runs || runs.length === 0) {
+      runSelect.innerHTML = "<option value=''>There are no runs yet</option>";
+      runMeta.textContent = "";
+      return;
+    }
+
+    for (const r of runs) {
+      const opt = document.createElement("option");
+      opt.value = r.run_id;
+      const fecha = r.created_at ? new Date(r.created_at).toLocaleString() : "";
+      opt.textContent = `Run ${r.run_id} — ${r.scenario || "No scenario"} (${fecha})`;
+      runSelect.appendChild(opt);
+    }
+
+    const first = runs[0];
+    runSelect.value = first.run_id;
+    updateRunMeta(first);
+    await loadNetworkIndexes();
+    loadHotspotsForRun(first.run_id);
+  }
+
+  function updateRunMeta(runRow) {
+    if (!runRow) {
+      runMeta.textContent = "";
+      return;
+    }
+    const fecha = runRow.created_at ? new Date(runRow.created_at).toLocaleString() : "";
+    runMeta.textContent = `Scenario: ${runRow.scenario || "No scenario"} · Date: ${fecha}`;
+  }
+
+  runSelect.addEventListener("change", async (ev) => {
+    const runId = ev.target.value;
+    if (!runId) return;
+
+    const runs = await sbFetch(`/rest/v1/runs?run_id=eq.${runId}&select=run_id,scenario,created_at`);
+    updateRunMeta(runs[0]);
+    loadHotspotsForRun(runId);
+  });
+
+  metricSelect.addEventListener("change", () => {
+    const metric = metricSelect.value;
+    thresholdUnit.textContent = metric === "wait_time_min" ? "(min)" : "(λ/μ)";
+    const currentRun = runSelect.value;
+    if (currentRun) {
+      loadHotspotsForRun(currentRun);
+    }
+  });
+
+  thresholdInput.addEventListener("change", () => {
+    const currentRun = runSelect.value;
+    if (currentRun) {
+      loadHotspotsForRun(currentRun);
+    }
+  });
+
+  // ======================
+  // 5. Detail panel
+  // ======================
+
+  function showStopDetails(stopId, dataRow) {
+    const info = stopsIndex[stopId];
+    if (!info) return;
+
+    const lines = stopLinesIndex[stopId] || [];
+    const wait = dataRow.wait_time_min || 0;
+    const crowd = dataRow.crowding_index || 0;
+    const lambda = dataRow.lambda_obs || 0;
+
+    const metricLabel = `
+      <div><strong>Average waiting time:</strong> ${wait.toFixed(1)} min</div>
+      <div><strong>Crowding index:</strong> ${crowd.toFixed(2)} (λ/μ)</div>
+      <div><strong>Observed λ:</strong> ${lambda.toFixed(1)} pax/h</div>
+    `;
+
+    let linesHtml = "";
+    if (lines.length === 0) {
+      linesHtml = `<div style="font-size:12px; color:#9ca3af;">No line data for this stop.</div>`;
+    } else {
+      linesHtml = `
+        <div class="detail-label" style="margin-top:10px;">Lines serving this stop</div>
+        <div class="lines-list">
+          ${lines.map(ln => `
+            <span class="line-pill">${ln.id}${ln.name ? " — " + ln.name : ""}</span>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    detailPanel.innerHTML = `
+      <div class="detail-label">Stop detail</div>
+      <h2>${info.name || "Unnamed stop"} (${stopId})</h2>
+      <div style="margin:4px 0 8px 0;">
+        <div><strong>District:</strong> ${info.district || "-"}</div>
+        ${metricLabel}
+      </div>
+      ${linesHtml}
+    `;
+  }
+
+  // ======================
+  // 6. Load hotspots for a run
+  // ======================
+
+  async function loadHotspotsForRun(runId) {
+    if (!runId) return;
+    await loadNetworkIndexes();
+
+    const metric = metricSelect.value;
+    const threshold = parseFloat(thresholdInput.value || "0");
+
+    const rows = await sbFetch(
+      `/rest/v1/run_stop_stats?run_id=eq.${runId}&select=stop_id,lambda_obs,wait_time_min,crowding_index`
+    );
+
+    hotspotsLayer.clearLayers();
+
+    if (!rows || rows.length === 0) {
+      hotspotsSummary.textContent = "There is no hotspot data for this run.";
+      return;
+    }
+
+    const filtered = rows.filter(r => {
+      const v = metric === "wait_time_min" ? (r.wait_time_min || 0) : (r.crowding_index || 0);
+      return v >= threshold;
+    });
+
+    hotspotsSummary.textContent =
+      `Total stops: ${rows.length} · Hotspots shown (>= threshold): ${filtered.length}`;
+
+    if (filtered.length === 0) return;
+
+    // Metric values only for filtered hotspots
+    const values = filtered.map(r =>
+      metric === "wait_time_min" ? (r.wait_time_min || 0) : (r.crowding_index || 0)
+    );
+
+    const minVal = Math.min(...values);
+    const maxVal = Math.max(...values);
+
+    // Percentiles to color: only the “worst” ones will be red
+    const sorted = [...values].sort((a, b) => a - b);
+    const q50 = sorted[Math.floor(0.50 * (sorted.length - 1))]; // median
+    const q80 = sorted[Math.floor(0.80 * (sorted.length - 1))]; // quite bad
+    const q95 = sorted[Math.floor(0.95 * (sorted.length - 1))]; // very bad
+
+    function valueToRadius(v) {
+      if (maxVal === minVal) return 12;
+      const t = (v - minVal) / (maxVal - minVal);
+      // slightly more contained sizes
+      return 6 + 20 * t;
+    }
+
+    function valueToColor(v) {
+      // If all are the same, neutral yellow
+      if (maxVal === minVal) return "#fbbf24";
+
+      // GOOD → green
+      if (v <= q50) {
+        return "#22c55e"; // green
+      }
+      // OK → yellowish green
+      if (v <= q80) {
+        return "#84cc16"; // lime
+      }
+      // REGULAR → orange
+      if (v <= q95) {
+        return "#f97316"; // orange
+      }
+      // VERY BAD → red
+      return "#ef4444"; // red
+    }
+    let bounds = [];
+
+    for (const r of filtered) {
+      const stopId = r.stop_id;
+      const stopInfo = stopsIndex[stopId];
+      if (!stopInfo) continue;
+
+      const val = metric === "wait_time_min" ? (r.wait_time_min || 0) : (r.crowding_index || 0);
+      const radius = valueToRadius(val);
+      const color  = valueToColor(val);
+
+      const marker = L.circleMarker([stopInfo.lat, stopInfo.lon], {
+        radius: radius,
+        color: color,
+        fillColor: color,
+        fillOpacity: 0.7,
+        weight: 1
+      });
+
+      const labelMetric = metric === "wait_time_min"
+        ? `${val.toFixed(1)} min`
+        : `${val.toFixed(2)} (λ/μ)`;
+
+      // Small popup on the map
+      marker.bindPopup(`
+        <div style="font-size:13px;">
+          <div><strong>Stop:</strong> ${stopId}</div>
+          <div><strong>District:</strong> ${stopInfo.district || "-"}</div>
+          <div><strong>${metric === "wait_time_min" ? "Average waiting time" : "Crowding index"}:</strong> ${labelMetric}</div>
+          <div><strong>Observed λ:</strong> ${(r.lambda_obs || 0).toFixed(1)} pax/h</div>
+        </div>
+      `);
+
+      // On click, update right panel
+      marker.on("click", () => {
+        showStopDetails(stopId, r);
+      });
+
+      marker.addTo(hotspotsLayer);
+      bounds.push([stopInfo.lat, stopInfo.lon]);
+    }
+
+    if (bounds.length > 0) {
+      map.fitBounds(bounds, { padding: [20, 20] });
+    }
+  }
+
+  // ======================
+  // 7. Init
+  // ======================
+  loadRuns();
+</script>
+{% endblock %}

@@ -1,0 +1,248 @@
+{% extends "daedalus/base.html" %}
+
+{% block extra_head %}
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <style>
+    #ads-map {
+      width: 100%;
+      height: 100%;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+    }
+    .ads-sidebar-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .ads-sidebar-card {
+      background: #ffffff;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .ads-chip {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      background: #e5f0ff;
+      color: #1d4ed8;
+      margin-right: 4px;
+      margin-top: 2px;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; height:100%; padding:12px; box-sizing:border-box; gap:12px;">
+  <!-- Map -->
+  <div style="flex:2; min-width:0;">
+    <div id="ads-map"></div>
+  </div>
+
+  <!-- Sidebar: stop / ad info -->
+  <div style="flex:1; display:flex; flex-direction:column;">
+    <div class="ads-sidebar-title">
+      Ads by stop map
+    </div>
+
+    <div style="margin-bottom:8px; font-size:13px;">
+      Select a stop on the map to see the current ad and since when it has been active.
+    </div>
+
+    <!-- District filter -->
+    <form
+      id="ads-filter-form"
+      style="margin-bottom:8px; display:flex; align-items:center; gap:6px; font-size:13px;"
+    >
+      <label for="district-select">District:</label>
+        <select id="district-select" name="district" style="padding:2px 6px; font-size:13px;">
+            <option value="">All</option>
+            <option value="01">01</option>
+            <option value="02">02</option>
+            <option value="03">03</option>
+            <option value="04">04</option>
+            <option value="05">05</option>
+            <option value="06">06</option>
+            <option value="07">07</option>
+            <option value="08">08</option>
+            <option value="09">09</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+            <option value="14">14</option>
+            <option value="15">15</option>
+            <option value="16">16</option>
+            <option value="17">17</option>
+            <option value="18">18</option>
+            <option value="19">19</option>
+            <option value="20">20</option>
+            <option value="21">21</option>
+        </select>
+      <button type="submit" style="padding:3px 10px; font-size:13px;">
+        Apply
+      </button>
+    </form>
+
+    <div id="ads-sidebar-card" class="ads-sidebar-card">
+      <div style="font-weight:600; margin-bottom:4px;">
+        No stop selected
+      </div>
+      <div style="font-size:12px; color:#6b7280;">
+        Click on a marker on the map to see its advertising data.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <!-- Leaflet JS -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
+  <script>
+    (function() {
+      // Initialize map centered on Madrid
+      const map = L.map('ads-map').setView([40.4168, -3.7038], 12);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+
+      // Layer for markers
+      let markersLayer = L.layerGroup().addTo(map);
+
+      const sidebarCard = document.getElementById("ads-sidebar-card");
+      const filterForm = document.getElementById("ads-filter-form");
+      const districtSelect = document.getElementById("district-select");
+
+      function formatMinutesAgo(ts) {
+        if (!ts) return "—";
+        const tsDate = new Date(ts);
+        const now = new Date();
+        const diffMs = now - tsDate;
+        const diffMin = Math.round(diffMs / 60000);
+        if (diffMin <= 0) return "just now";
+        if (diffMin === 1) return "1 minute ago";
+        if (diffMin < 60) return `${diffMin} minutes ago`;
+        const diffH = Math.round(diffMin / 60);
+        if (diffH === 1) return "1 hour ago";
+        return `${diffH} hours ago`;
+      }
+
+      function colorByPeopleCount(n) {
+        if (n == null) return '#9ca3af';   // grey
+        if (n <= 3) return '#22c55e';      // green
+        if (n <= 10) return '#eab308';     // yellow
+        return '#ef4444';                  // red
+      }
+
+      function loadAdsData(district) {
+        markersLayer.clearLayers();
+
+        let url = "{% url 'daedalus-ads-map-data' %}";
+        if (district) {
+          // Add ?district=xx
+          const params = new URLSearchParams({ district: district });
+          url += "?" + params.toString();
+        }
+
+        fetch(url)
+          .then(resp => resp.json())
+          .then(data => {
+            if (!Array.isArray(data)) return;
+
+            data.forEach(row => {
+              if (row.lat == null || row.lon == null) {
+                return;
+              }
+              const lat = row.lat;
+              const lon = row.lon;
+              const people = row.people_count;
+              const adName = row.ad_name || row.ad_id || "—";
+
+              const marker = L.circleMarker([lat, lon], {
+                radius: 6,
+                color: colorByPeopleCount(people),
+                fillColor: colorByPeopleCount(people),
+                fillOpacity: 0.8,
+                weight: 1
+              });
+
+              const minutesAgo = formatMinutesAgo(row.ts);
+
+              const popupHtml = `
+                <div style="font-size:12px;">
+                  <div style="font-weight:600; margin-bottom:4px;">
+                    ${row.stop_name || "(Unnamed stop)"} [${row.station_id}]
+                  </div>
+                  <div><strong>District:</strong> ${row.district_id || "—"}</div>
+                  <div><strong>People (last reading):</strong> ${people ?? "—"}</div>
+                  <div><strong>Current ad:</strong> ${adName}</div>
+                  <div><strong>Age:</strong> ${row.age_segment || "—"}</div>
+                  <div><strong>Gender:</strong> ${row.gender_segment || "—"}</div>
+                  <div><strong>Product:</strong> ${row.product_segment || "—"}</div>
+                  <div><strong>Last update:</strong> ${row.ts || "—"} (${minutesAgo})</div>
+                </div>
+              `;
+
+              marker.bindPopup(popupHtml);
+
+              marker.on('click', () => {
+                // Update sidebar when clicked
+                sidebarCard.innerHTML = `
+                  <div style="font-weight:600; margin-bottom:4px;">
+                    ${row.stop_name || "(Unnamed stop)"} [${row.station_id}]
+                  </div>
+                  <div style="font-size:12px; margin-bottom:4px;">
+                    District <strong>${row.district_id || "—"}</strong><br/>
+                    People (last reading): <strong>${people ?? "—"}</strong><br/>
+                    Last update: <strong>${row.ts || "—"}</strong> (${minutesAgo})
+                  </div>
+                  <div style="font-size:12px; margin-bottom:6px;">
+                    <strong>Current ad:</strong><br/>
+                    <span class="ads-chip">${adName}</span>
+                  </div>
+                  <div style="font-size:12px; margin-bottom:4px;">
+                    <strong>Detected segments:</strong><br/>
+                    ${row.age_segment ? `<span class="ads-chip">${row.age_segment}</span>` : ""}
+                    ${row.gender_segment ? `<span class="ads-chip">${row.gender_segment}</span>` : ""}
+                    ${row.product_segment ? `<span class="ads-chip">${row.product_segment}</span>` : ""}
+                  </div>
+                `;
+              });
+
+              marker.addTo(markersLayer);
+            });
+          })
+          .catch(err => {
+            console.error("Error loading ads data:", err);
+          });
+      }
+
+      // First load (no filter)
+      loadAdsData(null);
+
+      // District filter handling
+      filterForm.addEventListener("submit", function(e) {
+        e.preventDefault();
+        const d = districtSelect.value || null;
+        loadAdsData(d);
+      });
+    })();
+  </script>
+{% endblock %}

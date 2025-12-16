@@ -1,0 +1,94 @@
+{% extends "daedalus/base.html" %}
+
+{% block content %}
+<div style="display:flex; flex-direction:column; height:100%; padding:16px; box-sizing:border-box;">
+
+  <h1 style="margin:0 0 12px 0; font-size:20px;">Ads panel by stop</h1>
+
+  <!-- Filter -->
+  <form method="get" style="margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+    <label for="district" style="font-size:14px;">Filter by district:</label>
+
+    <select id="district" name="district" style="padding:4px 8px; font-size:14px;">
+      <option value="">All</option>
+      {% for d in districts %}
+        <option value="{{ d }}" {% if selected_district == d %}selected{% endif %}>
+          {{ d }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <button type="submit" style="padding:4px 10px; font-size:14px;">Apply</button>
+  </form>
+
+  <!-- Table -->
+  <div style="flex:1; overflow:auto; border:1px solid #e5e7eb; border-radius:6px; background:white;">
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+
+      <thead style="background:#f3f4f6; position:sticky; top:0;">
+        <tr>
+          <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #e5e7eb;">Stop</th>
+          <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #e5e7eb;">Stop ID</th>
+          <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #e5e7eb;">District</th>
+          <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #e5e7eb;">People (last reading)</th>
+          <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #e5e7eb;">Age</th>
+          <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #e5e7eb;">Gender</th>
+          <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #e5e7eb;">Product</th>
+          <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #e5e7eb;">Current ad</th>
+          <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #e5e7eb;">Active time</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td style="padding:6px 8px; border-bottom:1px solid #f3f4f6;">
+              {{ r.stop_name|default:"(Unnamed)" }}
+            </td>
+
+            <td style="padding:6px 8px; border-bottom:1px solid #f3f4f6;">
+              {{ r.station_id }}
+            </td>
+
+            <td style="padding:6px 8px; border-bottom:1px solid #f3f4f6;">
+              {{ r.district_id }}
+            </td>
+
+            <td style="padding:6px 8px; border-bottom:1px solid #f3f4f6;">
+              {{ r.people_count }}
+            </td>
+
+            <td style="padding:6px 8px; border-bottom:1px solid #f3f4f6;">
+              {{ r.age_segment }}
+            </td>
+
+            <td style="padding:6px 8px; border-bottom:1px solid #f3f4f6;">
+              {{ r.gender_segment }}
+            </td>
+
+            <td style="padding:6px 8px; border-bottom:1px solid #f3f4f6;">
+              {{ r.product_segment }}
+            </td>
+
+            <td style="padding:6px 8px; border-bottom:1px solid #f3f4f6;">
+              <strong>{{ r.ad_name|default:r.ad_id }}</strong>
+            </td>
+
+            <td style="padding:6px 8px; border-bottom:1px solid #f3f4f6; white-space:nowrap;" title="{{ r.ts }}">
+              {{ r.ad_duration_human }}
+            </td>
+          </tr>
+
+        {% empty %}
+          <tr>
+            <td colspan="9" style="padding:10px; text-align:center; color:#6b7280;">
+              No ad data available yet. Is the Kafka consumer running and sending data to Supabase?
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+
+    </table>
+  </div>
+</div>
+{% endblock %}

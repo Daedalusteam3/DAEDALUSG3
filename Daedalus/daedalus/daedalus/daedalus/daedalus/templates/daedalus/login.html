@@ -1,0 +1,53 @@
+{% extends "daedalus/base.html" %}
+
+{% block title %}Log in · Daedalus{% endblock %}
+
+{% block content %}
+<div style="max-width: 400px; margin: 60px auto; padding: 0 16px;">
+  <div style="background:#f9fafb; border-radius:12px; padding:24px 24px 20px;
+              border:1px solid #e5e7eb; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+    <h1 style="font-size:22px; font-weight:600; margin-bottom:4px; color:#111827;">
+      Log in
+    </h1>
+    <p style="font-size:13px; color:#6b7280; margin-bottom:16px;">
+      Access for EMT operator.
+    </p>
+
+    {% if form.errors %}
+      <div style="background:#fef2f2; border:1px solid #fecaca; color:#b91c1c;
+                  font-size:13px; border-radius:8px; padding:8px 10px; margin-bottom:12px;">
+        Incorrect username or password.
+      </div>
+    {% endif %}
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <div style="margin-bottom:10px;">
+        <label style="display:block; font-size:13px; color:#374151; margin-bottom:2px;">
+          Username
+        </label>
+        <input type="text" name="username" autofocus required
+               style="width:100%; padding:6px 8px; border-radius:8px;
+                      border:1px solid #d1d5db; font-size:14px;">
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-size:13px; color:#374151; margin-bottom:2px;">
+          Password
+        </label>
+        <input type="password" name="password" required
+               style="width:100%; padding:6px 8px; border-radius:8px;
+                      border:1px solid #d1d5db; font-size:14px;">
+      </div>
+
+      <button type="submit"
+              style="width:100%; padding:8px 10px; border-radius:999px; border:none;
+                     background:#0f766e; color:white; font-size:14px; font-weight:500;
+                     cursor:pointer;">
+        Enter Daedalus
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+

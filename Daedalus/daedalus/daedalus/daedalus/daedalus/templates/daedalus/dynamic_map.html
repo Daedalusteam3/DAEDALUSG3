@@ -1,0 +1,531 @@
+{% extends "daedalus/base.html" %}
+{% load static %}
+
+{% block extra_head %}
+  <!-- deck.gl + MapLibre -->
+  <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    #map-container {
+      position: absolute;
+      top: 50px;  /* so it doesn't cover the header */
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+    #controls {
+      position: absolute;
+      left: 50%;
+      bottom: 15px;
+      transform: translateX(-50%);
+      background: rgba(255,255,255,0.95);
+      padding: 6px 14px;
+      border-radius: 999px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      font-size: 13px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    #time-slider {
+      width: 220px;
+    }
+    #stop-info {
+      position: absolute;
+      top: 60px;
+      left: 10px;
+      background: rgba(255,255,255,0.96);
+      padding: 8px 12px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      font-size: 13px;
+      z-index: 10;
+      max-width: 260px;
+    }
+    #stop-info b {
+      font-size: 13px;
+    }
+
+    /* Runs panel + frequency table */
+    #run-panel {
+      position: absolute;
+      top: 60px;
+      right: 10px;
+      background: rgba(255,255,255,0.96);
+      padding: 8px 12px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      font-size: 12px;
+      z-index: 10;
+      max-width: 320px;
+      max-height: 300px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    #run-meta {
+      font-size: 11px;
+      color: #555;
+    }
+    #freq-table {
+      font-size: 11px;
+      max-height: 200px;
+      overflow: auto;
+    }
+    #freq-table table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    #freq-table th, #freq-table td {
+      border: 1px solid #ddd;
+      padding: 2px 4px;
+      text-align: right;
+    }
+    #freq-table th {
+      background: #f3f3f3;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    #freq-table td:first-child, #freq-table th:first-child {
+      text-align: left;
+    }
+
+    #legend {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      padding: 10px;
+      background: rgba(255,255,255,0.9);
+      border-radius: 8px;
+      font-size: 12px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      z-index: 10;
+    }
+
+    #mode-label {
+      font-size: 11px;
+      color: #4b5563;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div id="map-container"></div>
+
+  <!-- Panel with info for the selected stop -->
+  <div id="stop-info">
+    <b>Selected stop</b><br>
+    <span id="info-name">Click on a stop</span><br>
+    <b>District:</b> <span id="info-distrito">—</span><br>
+    <b>Base demand λ:</b> <span id="info-lambda">—</span><br>
+    <b>Arrivals:</b> <span id="info-arrivals">—</span><br>
+    <b>Ad:</b> <span id="info-ad">—</span>
+  </div>
+
+  <!-- Run panel + frequency table -->
+  <div id="run-panel">
+    <b>Selected run</b>
+    <div>
+      <label for="run-selector">Run:</label>
+      <select id="run-selector">
+        <option value="">—</option>
+      </select>
+    </div>
+    <div id="run-meta">No run selected.</div>
+    <div id="freq-table"><em>Select a run to see frequency changes.</em></div>
+  </div>
+
+  <!-- Time slider + comparison button -->
+  <div id="controls">
+    Time: <span id="time-label">0</span> min
+    <input id="time-slider" type="range" min="0" max="60" step="1" value="0">
+    <button id="compare-toggle" type="button">View initial state</button>
+    <span id="mode-label">(Showing: optimized)</span>
+  </div>
+
+  <!-- Legend -->
+  <div id="legend">
+    <b>Legend</b><br>
+    <div><span style="display:inline-block;width:20px;height:3px;background:#000;border-bottom:1px dashed #000"></span> Return direction (more transparent)</div>
+    <div><span style="display:inline-block;width:20px;height:3px;background:#4ade80"></span> Boost in optimized mode (thicker line)</div>
+    <div><span style="display:inline-block;width:20px;height:3px;background:#9ca3af"></span> Reduction in optimized mode (thinner line)</div>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const {DeckGL, TripsLayer, ScatterplotLayer} = deck;
+
+  const SUPABASE_URL  = "https://rrbuwzcoiyncvmzctvnr.supabase.co";
+  const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyYnV3emNvaXluY3ZtemN0dm5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMxNTcxNTMsImV4cCI6MjA3ODczMzE1M30.2pRgInMTIFJi-aPipsadQF4WzeceMjPcPXPY4PjnTss";
+
+  function sbFetch(pathWithQuery) {
+    return fetch(`${SUPABASE_URL}${pathWithQuery}`, {
+      headers: {
+        "apikey": SUPABASE_ANON,
+        "Authorization": `Bearer ${SUPABASE_ANON}`
+      }
+    }).then(r => r.json());
+  }
+
+  let tripsData = [];
+  let stopsData = [];
+  let hotspotsData = [];     // hotspots by run
+  let runsList = [];         // runs list
+  let currentRunId = null;   // selected run
+  let freqChange = {};       // { line_id: delta_rel } boost/reduction
+
+  let currentTime = 0;
+  let maxTimestamp = 60; // will be recalculated with data
+  let maxLambdaBase = 1; // normalize stop demand
+  let showOptimized = true; // true = optimized, false = initial state
+
+  const timeLabel     = document.getElementById('time-label');
+  const timeSlider    = document.getElementById('time-slider');
+  const compareToggle = document.getElementById('compare-toggle');
+  const modeLabel     = document.getElementById('mode-label');
+
+  const infoName     = document.getElementById('info-name');
+  const infoDistrito = document.getElementById('info-distrito');
+  const infoLambda   = document.getElementById('info-lambda');
+  const infoArrivals = document.getElementById('info-arrivals');
+  const infoAd       = document.getElementById('info-ad');
+
+  const runSelector  = document.getElementById('run-selector');
+  const runMeta      = document.getElementById('run-meta');
+  const freqTableDiv = document.getElementById('freq-table');
+
+  // ====================
+  // Create map
+  // ====================
+  const deckgl = new DeckGL({
+    container: 'map-container',
+    mapStyle: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    initialViewState: {
+      longitude: -3.70325,
+      latitude: 40.4167,
+      zoom: 11.5,
+      pitch: 45,
+      bearing: 0
+    },
+    controller: true,
+    layers: [],
+    getTooltip: ({object, layer}) => {
+      if (!object) return null;
+      if (layer && layer.id === 'stops-layer') {
+        const distrito = object.distrito || '—';
+        const lam = (object.lambdaBase || 0).toFixed(1);
+        return {
+          text: `${object.name}\nDistrict: ${distrito}\nBase λ: ${lam}`
+        };
+      }
+      if (layer && layer.id === 'trips-layer') {
+        const rid = String(object.routeId || "");
+        const baseId = rid.replace('_out', '').replace('_in', '');
+        return { text: `Line ${baseId}` };
+      }
+      if (layer && layer.id === 'hotspots-layer') {
+        const lam = (object.lambda_obs || 0).toFixed(1);
+        const w   = (object.wait_time_min || 0).toFixed(1);
+        const c   = (object.crowding_index || 0).toFixed(2);
+        return {
+          text: `${object.name}\nλ obs: ${lam}\nWaiting time: ${w} min\nCrowding: ${c}`
+        };
+      }
+      return null;
+    }
+  });
+
+  // ====================
+  // Load initial data (routes + stops)
+  // ====================
+  Promise.all([
+    fetch("{% static 'daedalus/tripsData_all_gtfs.json' %}").then(r => r.json()),
+    sbFetch("/rest/v1/stops?select=stop_id,name,lat,lon,district_id,lambda_base")
+  ]).then(([trips, stopsRows]) => {
+    tripsData = trips;
+
+    // compute real maxTimestamp from trips
+    try {
+      const allMax = tripsData.map(t => {
+        if (!t.timestamps || !t.timestamps.length) return 0;
+        return t.timestamps[t.timestamps.length - 1];
+      });
+      maxTimestamp = Math.max(10, ...allMax);
+    } catch (e) {
+      maxTimestamp = 60;
+    }
+    timeSlider.max = maxTimestamp;
+    timeSlider.value = 0;
+    timeLabel.textContent = "0";
+
+    stopsData = stopsRows.map(row => ({
+      stopId: row.stop_id,
+      name: row.name,
+      position: [row.lon, row.lat],
+      distrito: row.district_id,
+      lambdaBase: row.lambda_base ?? 0
+    }));
+
+    maxLambdaBase = Math.max(1, ...stopsData.map(s => s.lambdaBase || 0));
+
+    deckgl.setProps({ layers: getLayers() });
+
+    // Load runs
+    loadRuns();
+  });
+
+  // ====================
+  // Define layers
+  // ====================
+  function getLayers() {
+    const tripsLayer = new TripsLayer({
+      id: 'trips-layer',
+      data: tripsData,
+      getPath: d => d.path,
+      getTimestamps: d => d.timestamps,
+
+      // Color: by line + direction (outbound stronger, inbound more transparent)
+      getColor: d => {
+        const id = String(d.routeId || "");
+        let base;
+        if (id.startsWith('001')) base = [0, 120, 255];    // example
+        else base = [200, 0, 0];
+
+        if (id.endsWith('_in')) return [...base, 130]; // inbound
+        return [...base, 255];                         // outbound
+      },
+
+      // Width: base * (1 ± change from PuLP if in optimized mode)
+      getWidth: d => {
+        const baseWidth = 30; // meters (initial state)
+        const rid = String(d.routeId || "");
+        const lineId = rid.replace('_out','').replace('_in','');
+
+        if (!showOptimized || !freqChange[lineId]) {
+          return baseWidth;
+        }
+
+        const change = freqChange[lineId]; // relative, e.g. +0.3 = +30%
+
+        let factor;
+        if (change > 0) {
+          // Boosts clearly thicker (up to x2)
+          factor = 1 + Math.min(Math.abs(change), 1.0);
+        } else {
+          // Reductions clearly thinner (down to x0.3)
+          factor = 1 - Math.min(Math.abs(change), 0.7);
+        }
+        return baseWidth * factor;
+      },
+
+      widthUnits: 'meters',
+      widthMinPixels: 2,
+      opacity: 0.9,
+      trailLength: 15,
+      currentTime: currentTime
+    });
+
+    const stopsLayer = new ScatterplotLayer({
+      id: 'stops-layer',
+      data: stopsData,
+      pickable: true,
+      autoHighlight: true,
+      getPosition: d => d.position,
+      // Radius depends only on λ_base (no animation to save CPU)
+      getRadius: d => {
+        const lam = d.lambdaBase || 0;
+        const norm = lam / maxLambdaBase;
+        const baseR = 40; // m
+        return baseR * (1 + 2 * norm);
+      },
+      radiusUnits: 'meters',
+      radiusMinPixels: 3,
+      getFillColor: d => d.lambdaBase > 0 ? [0, 150, 255, 200] : [170, 170, 170, 180],
+      onClick: info => {
+        const stop = info.object;
+        if (!stop) return;
+        infoName.textContent     = stop.name;
+        infoDistrito.textContent = stop.distrito || '—';
+        infoLambda.textContent   = (stop.lambdaBase || 0).toFixed(1);
+        infoArrivals.textContent = '—';
+        infoAd.textContent       = '—';
+      }
+    });
+
+    const hotspotsLayer = new ScatterplotLayer({
+      id: 'hotspots-layer',
+      data: hotspotsData,
+      visible: hotspotsData && hotspotsData.length > 0,
+      pickable: true,
+      autoHighlight: true,
+      getPosition: d => {
+        if (!d.geom || !d.geom.coordinates) return [0, 0];
+        const [lon, lat] = d.geom.coordinates;
+        return [lon, lat];
+      },
+      getRadius: d => 90,
+      radiusUnits: 'meters',
+      radiusMinPixels: 4,
+      getFillColor: d => [255, 0, 0, 200]
+    });
+
+    const layers = [tripsLayer, stopsLayer];
+    if (hotspotsData && hotspotsData.length > 0) {
+      layers.push(hotspotsLayer);
+    }
+    return layers;
+  }
+
+  // ====================
+  // Time control (slider only, no auto animation)
+  // ====================
+  function setTime(t) {
+    currentTime = t;
+    timeLabel.textContent = t.toFixed(0);
+    deckgl.setProps({ layers: getLayers() });
+  }
+
+  timeSlider.addEventListener('input', e => {
+    const t = Number(e.target.value);
+    setTime(t);
+  });
+
+  // Initial vs optimized state button
+  function updateModeUI() {
+    if (showOptimized) {
+      compareToggle.textContent = "View initial state";
+      modeLabel.textContent = "(Showing: optimized)";
+    } else {
+      compareToggle.textContent = "View optimized state";
+      modeLabel.textContent = "(Showing: initial state)";
+    }
+  }
+
+  compareToggle.addEventListener('click', () => {
+    showOptimized = !showOptimized;
+    updateModeUI();
+    deckgl.setProps({ layers: getLayers() });
+  });
+
+  updateModeUI();
+
+  // ====================
+  // Runs and hotspots
+  // ====================
+  async function loadRuns() {
+    const runs = await sbFetch("/rest/v1/runs?select=*");
+    runsList = runs || [];
+
+    runsList.sort((a, b) => b.run_id - a.run_id);
+
+    runSelector.innerHTML = "<option value=''>—</option>";
+    for (const r of runsList) {
+      const opt = document.createElement("option");
+      opt.value = r.run_id;
+      const fecha = r.created_at ? new Date(r.created_at).toLocaleString() : "";
+      opt.textContent = `Run ${r.run_id} — ${r.scenario || ''} (${fecha})`;
+      runSelector.appendChild(opt);
+    }
+
+    if (runsList.length > 0) {
+      runSelector.value = runsList[0].run_id;
+      loadRunData(runsList[0].run_id);
+    } else {
+      runMeta.textContent = "There are no saved runs yet.";
+      freqTableDiv.innerHTML = "<em>Run the engine to create the first run.</em>";
+    }
+  }
+
+  async function loadRunData(runId) {
+    if (!runId) {
+      currentRunId = null;
+      hotspotsData = [];
+      freqChange = {};
+      updateFrequencyTable([]);
+      runMeta.textContent = "No run selected.";
+      deckgl.setProps({ layers: getLayers() });
+      return;
+    }
+
+    currentRunId = Number(runId);
+
+    const run = runsList.find(r => r.run_id === currentRunId);
+    if (run) {
+      const fecha = run.created_at ? new Date(run.created_at).toLocaleString() : "";
+      runMeta.textContent = `Run ${run.run_id} — ${run.scenario || 'No scenario'} — ${fecha}`;
+    }
+
+    const freqData = await sbFetch(`/rest/v1/run_line_freq?run_id=eq.${currentRunId}&select=*`);
+    const hotspots = await sbFetch(`/rest/v1/v_hotspots?run_id=eq.${currentRunId}&select=*`);
+
+    // Map of relative frequency change
+    freqChange = {};
+    if (freqData) {
+      for (const r of freqData) {
+        const deltaRel = (r.freq_after - r.freq_before) / (r.freq_before || 1);
+        freqChange[r.line_id] = deltaRel;
+      }
+    }
+
+    hotspotsData = hotspots || [];
+    updateFrequencyTable(freqData || []);
+    deckgl.setProps({ layers: getLayers() });
+  }
+
+  function updateFrequencyTable(rows) {
+    if (!rows || rows.length === 0) {
+      freqTableDiv.innerHTML = "<em>No frequency data for this run.</em>";
+      return;
+    }
+
+    const enriched = rows.map(r => {
+      const delta = (r.freq_after - r.freq_before) / (r.freq_before || 1) * 100;
+      return {...r, delta_pct: delta};
+    }).sort((a, b) => b.delta_pct - a.delta_pct);
+
+    let html = `
+      <table>
+        <tr>
+          <th>Line</th>
+          <th>Before</th>
+          <th>After</th>
+          <th>Δ %</th>
+        </tr>
+    `;
+
+    for (const r of enriched) {
+      const delta = r.delta_pct;
+      const color = delta >= 0 ? "green" : "red";
+      html += `
+        <tr>
+          <td>${r.line_id}</td>
+          <td>${r.freq_before.toFixed(2)}</td>
+          <td>${r.freq_after.toFixed(2)}</td>
+          <td style="color:${color}">${delta.toFixed(1)}%</td>
+        </tr>
+      `;
+    }
+
+    html += "</table>";
+    freqTableDiv.innerHTML = html;
+  }
+
+  runSelector.addEventListener("change", e => {
+    const runId = e.target.value;
+    loadRunData(runId);
+  });
+</script>
+{% endblock %}
