@@ -18,6 +18,7 @@ If you use these training scripts or the underlying data logic, please acknowled
   booktitle = "Proceedings of the International Conference on Computer Vision Workshops (ICCVW)",
   year      = 2017,
 }
+</details>
 
 ## 🌐 Web Interface & Deployment (Daedalus)
 
@@ -103,3 +104,4 @@ urllib3==2.6.0
 Werkzeug==3.1.4
 wheel==0.45.1
 wrapt==2.0.1
+
